@@ -15,6 +15,9 @@
   <dict>
     <key>BRAINX_PORT</key>
     <string>3100</string>
+    <!-- OAuth 回调地址必须与飞书后台白名单一致；缺省会回落 3000 → 错误码 20029 -->
+    <key>BRAINX_BASE_URL</key>
+    <string>http://127.0.0.1:3100</string>
     <key>BRAINX_BRIDGE_INTERVAL_MS</key>
     <string>180000</string>
     <!-- 重大变化自动推卡默认关；要开启把下一行取消注释（仅推顾问本人，绝不推群） -->
