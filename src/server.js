@@ -1,6 +1,7 @@
 /** server.js — HTTP API + 静态工作台（补全文档 §16 契约）。
- * 零框架 node:http。除 session/consultants 外全部要登录 Cookie。
+ * 零框架 node:http。除 session/consultants/oauth 外全部要登录 Cookie。
  */
+import './env.js';
 import http from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize, dirname } from 'node:path';
@@ -12,6 +13,8 @@ import { engage, commitmentSummary, currentState, legalActions, DISMISS_REASONS 
 import { replay, recordOutcome } from './replay.js';
 import { buildDailyCard, buildSyncAlertCard, pushCard } from './push.js';
 import { signSession, verifySession, cookieOf } from './session.js';
+import { signState, verifyState, buildAuthorizeUrl, exchangeCode, oauthConfigured } from './oauth.js';
+import { findByOpenId } from './roster.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
@@ -31,21 +34,53 @@ async function body(req) {
   try { return JSON.parse(s || '{}'); } catch { return null; }
 }
 
-export function createServer(db = openDb()) {
+export function createServer(db = openDb(), deps = {}) {
+  const exchange = deps.exchangeCode || exchangeCode;
+  const devAuth = process.env.BRAINX_DEV_AUTH === '1';
   const auth = (req, res) => {
-    const cid = verifySession(cookieOf(req));
-    if (!cid) err(res, 401, 'UNAUTHORIZED', '未登录或会话已过期');
-    return cid;
+    const s = verifySession(cookieOf(req));
+    if (!s) err(res, 401, 'UNAUTHORIZED', '未登录或会话已过期');
+    return s?.consultant_id || null;
   };
 
   const routes = {
     'GET /api/v1/consultants': (req, res) => {
-      const fromFixtures = loadConsultants();
-      json(res, 200, { items: fromFixtures.map((c) => ({ consultant_id: c.consultant_id, display_name: c.display_name })) });
+      json(res, 200, { items: loadConsultants(db)
+        .map((c) => ({ consultant_id: c.consultant_id, display_name: c.display_name })) });
     },
+    // —— 飞书 OAuth 网页授权（多顾问登录的唯一正式入口）——
+    'GET /api/v1/oauth/status': (req, res) => {
+      json(res, 200, { configured: oauthConfigured(), dev_auth: devAuth });
+    },
+    'GET /api/v1/oauth/authorize': (req, res) => {
+      if (!oauthConfigured()) {
+        return err(res, 503, 'OAUTH_NOT_CONFIGURED',
+          '缺 BRAINX_FEISHU_APP_SECRET（从 1Password 导出后 export 再启动服务）');
+      }
+      res.writeHead(302, { Location: buildAuthorizeUrl(signState()) });
+      res.end();
+    },
+    'GET /api/v1/oauth/callback': async (req, res, cid, q) => {
+      const fail = (code) => { res.writeHead(302, { Location: `/login?error=${code}` }); res.end(); };
+      if (!verifyState(q.get('state'))) return fail('bad_state');
+      const code = q.get('code');
+      if (!code) return fail('no_code');
+      let identity;
+      try { identity = await exchange(code); }
+      catch (e) { return fail('exchange_failed'); }
+      const consultant = findByOpenId(db, identity.open_id);
+      if (!consultant) return fail('not_in_roster'); // fail-closed：不在花名册 = 不是顾问
+      res.writeHead(302, {
+        Location: '/',
+        'Set-Cookie': `brainx_session=${encodeURIComponent(signSession(consultant.consultant_id, identity.open_id))}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800`,
+      });
+      res.end();
+    },
+    // 开发者后门：仅 BRAINX_DEV_AUTH=1 时可用（离线演示），默认关闭
     'POST /api/v1/session': async (req, res) => {
+      if (!devAuth) return err(res, 403, 'DEV_AUTH_OFF', '请使用飞书账号登录');
       const b = await body(req);
-      const ok = loadConsultants().some((c) => c.consultant_id === b?.consultant_id);
+      const ok = loadConsultants(db).some((c) => c.consultant_id === b?.consultant_id);
       if (!ok) return err(res, 422, 'UNKNOWN_CONSULTANT', '未知顾问身份');
       res.writeHead(204, { 'Set-Cookie': `brainx_session=${encodeURIComponent(signSession(b.consultant_id))}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800` });
       res.end();
@@ -159,7 +194,7 @@ export function createServer(db = openDb()) {
       const snapshot = latestCompleteSnapshot(db, cid);
       const run = latestRun(db, cid);
       const c = commitmentSummary(db, cid);
-      const name = loadConsultants().find((x) => x.consultant_id === cid)?.display_name || cid;
+      const name = loadConsultants(db).find((x) => x.consultant_id === cid)?.display_name || cid;
       const card = sync && !sync.complete
         ? buildSyncAlertCard(sync)
         : buildDailyCard({ consultant_name: name, run: run?.run, items: run?.items || [],
@@ -173,7 +208,7 @@ export function createServer(db = openDb()) {
       const snapshot = latestCompleteSnapshot(db, cid);
       const run = latestRun(db, cid);
       const c = commitmentSummary(db, cid);
-      const name = loadConsultants().find((x) => x.consultant_id === cid)?.display_name || cid;
+      const name = loadConsultants(db).find((x) => x.consultant_id === cid)?.display_name || cid;
       const kind = sync && !sync.complete ? 'SYNC_ALERT' : 'DAILY_TOP3';
       const card = kind === 'SYNC_ALERT'
         ? buildSyncAlertCard(sync)
@@ -203,7 +238,8 @@ export function createServer(db = openDb()) {
       }
     }
     if (handler) {
-      const open = ['GET /api/v1/consultants', 'POST /api/v1/session', 'DELETE /api/v1/session'];
+      const open = ['GET /api/v1/consultants', 'POST /api/v1/session', 'DELETE /api/v1/session',
+                    'GET /api/v1/oauth/status', 'GET /api/v1/oauth/authorize', 'GET /api/v1/oauth/callback'];
       const cid = open.includes(`${req.method} ${path}`) ? null : auth(req, res);
       if (open.includes(`${req.method} ${path}`) || cid) {
         try { return await handler(req, res, cid, u.searchParams, dynId); }

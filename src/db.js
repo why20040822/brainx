@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readdirSync, readFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { seedRoster } from './roster.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const DB_PATH = process.env.BRAINX_DB || join(ROOT, 'data', 'brainx.db');
@@ -14,6 +15,7 @@ export function openDb(dbPath = DB_PATH) {
   db.exec('PRAGMA foreign_keys = ON');
   db.exec('PRAGMA busy_timeout = 5000');
   migrate(db);
+  seedRoster(db); // 幂等：花名册种子只在空位补种
   return db;
 }
 

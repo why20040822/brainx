@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** braintex-local-recommend --consultant felix [--top 10] [--dry-run] */
+import '../src/env.js';
 import { openDb } from '../src/db.js';
 import { recommend } from '../src/recommend.js';
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** braintex-local-push --consultant felix [--target oc_xxx] [--send]（默认只预览） */
+import '../src/env.js';
 import { openDb } from '../src/db.js';
 import { latestSync, latestCompleteSnapshot } from '../src/sync.js';
 import { latestRun, loadConsultants } from '../src/recommend.js';
@@ -13,7 +14,7 @@ const sync = latestSync(db, cid);
 const snapshot = latestCompleteSnapshot(db, cid);
 const run = latestRun(db, cid);
 const c = commitmentSummary(db, cid);
-const name = loadConsultants().find((x) => x.consultant_id === cid)?.display_name || cid;
+const name = loadConsultants(db).find((x) => x.consultant_id === cid)?.display_name || cid;
 const kind = sync && !sync.complete ? 'SYNC_ALERT' : 'DAILY_TOP3';
 const card = kind === 'SYNC_ALERT' ? buildSyncAlertCard(sync)
   : buildDailyCard({ consultant_name: name, run: run?.run, items: run?.items || [],

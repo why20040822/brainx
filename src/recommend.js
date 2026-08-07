@@ -4,18 +4,15 @@
 import { now, uuid } from './db.js';
 import { latestCompleteSnapshot, latestSync } from './sync.js';
 import { WEIGHTS, POLICY_VERSION, hardBlock, scoreJob, actionOf, bandOf, sortRecs, explain } from './scorer.js';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { listConsultants } from './roster.js';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-export function loadConsultants() {
-  return JSON.parse(readFileSync(join(ROOT, 'fixtures', 'consultants.json'), 'utf8'));
+/** 花名册从 DB 读（0003 起 consultants 表为权威，fixtures 只是种子）。 */
+export function loadConsultants(db) {
+  return listConsultants(db);
 }
 
 export function buildCtx(db, consultant_id, snapshot) {
-  const c = loadConsultants().find((x) => x.consultant_id === consultant_id) || {};
+  const c = loadConsultants(db).find((x) => x.consultant_id === consultant_id) || {};
   // 历史 MY_JOB 文本（含已关闭/过期关系 → 历史相似度，§17.2-2）
   const hist = db.prepare(`SELECT DISTINCT j.company || ' ' || j.role AS text
     FROM job_memberships m JOIN job_facts j ON j.project_id = m.project_id

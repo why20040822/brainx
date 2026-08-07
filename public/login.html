@@ -10,30 +10,61 @@
 <main class="login-card" aria-labelledby="login-title">
   <h1 id="login-title" class="login-brand">Brain X</h1>
   <p class="login-sub">职位决策工作台 · 本地版</p>
-  <form id="login-form">
+
+  <!-- 正式入口：飞书网页授权，身份=飞书账号，按 open_id 匹配顾问花名册 -->
+  <div id="oauth-block" hidden>
+    <a class="btn btn-primary btn-block" id="oauth-btn" href="/api/v1/oauth/authorize"
+       style="display:block;text-align:center;text-decoration:none;line-height:28px">使用飞书账号登录</a>
+    <p class="login-foot muted">仅限 TTC 交易团队顾问（花名册见 consultants 表）· 数据保存在本机 data/brainx.db</p>
+  </div>
+
+  <!-- 未配置 app_secret 时的管理员提示 -->
+  <div id="setup-block" hidden>
+    <p class="error-text">飞书登录未配置</p>
+    <p class="muted" style="font-size:13.5px">管理员在终端执行后重启服务：<br>
+    <code>export BRAINX_FEISHU_APP_SECRET=…（从 1Password 读取）</code></p>
+  </div>
+
+  <!-- 开发者后门（BRAINX_DEV_AUTH=1）：离线演示用的身份选择器 -->
+  <form id="login-form" hidden>
     <fieldset>
-      <legend>选择你的身份进入：</legend>
-      <div id="consultant-list" role="radiogroup" aria-label="顾问列表">
-        <p class="muted" id="login-loading">加载中…</p>
-      </div>
+      <legend>演示模式 · 选择身份进入：</legend>
+      <div id="consultant-list" role="radiogroup" aria-label="顾问列表"></div>
     </fieldset>
     <button type="submit" class="btn btn-primary btn-block" id="login-btn" disabled>进 入 工 作 台</button>
   </form>
-  <p class="login-foot muted">数据保存在本机 data/brainx.db</p>
+
   <p class="error-text" id="login-error" role="alert" hidden></p>
 </main>
 <script type="module">
-const list = document.getElementById('consultant-list');
-const btn = document.getElementById('login-btn');
 const errEl = document.getElementById('login-error');
-let selected = null;
-try {
+const ERROR_TEXT = {
+  bad_state: '登录状态校验失败，请重试',
+  no_code: '飞书未返回授权码',
+  exchange_failed: '飞书身份交换失败，请重试',
+  not_in_roster: '你的飞书账号不在顾问花名册中，请联系 Mia 开通',
+};
+const params = new URLSearchParams(location.search);
+if (params.get('error')) {
+  errEl.hidden = false;
+  errEl.textContent = ERROR_TEXT[params.get('error')] || '登录失败，请重试';
+}
+
+const st = await (await fetch('/api/v1/oauth/status')).json();
+if (st.configured) {
+  document.getElementById('oauth-block').hidden = false;
+} else if (!st.dev_auth) {
+  document.getElementById('setup-block').hidden = false;
+}
+if (st.dev_auth) {
+  // 演示模式：保留原选择器
+  const form = document.getElementById('login-form');
+  form.hidden = false;
+  const list = document.getElementById('consultant-list');
+  const btn = document.getElementById('login-btn');
+  let selected = null;
   const r = await fetch('/api/v1/consultants');
   const d = await r.json();
-  document.getElementById('login-loading')?.remove();
-  if (!d.items?.length) {
-    list.innerHTML = '<p class="muted">暂无顾问，请先在终端跑 <code>npm run sync</code> 导入数据</p>';
-  }
   for (const c of d.items || []) {
     const label = document.createElement('label');
     label.className = 'consultant-option';
@@ -44,20 +75,18 @@ try {
     });
     list.appendChild(label);
   }
-} catch (e) {
-  document.getElementById('login-loading').textContent = '加载失败：' + e.message;
-}
-document.getElementById('login-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  if (!selected) return;
-  const r = await fetch('/api/v1/session', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ consultant_id: selected }),
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!selected) return;
+    const r = await fetch('/api/v1/session', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ consultant_id: selected }),
+    });
+    if (r.status === 204) { location.href = '/'; return; }
+    errEl.hidden = false;
+    errEl.textContent = '登录失败，请重试';
   });
-  if (r.status === 204) { location.href = '/'; return; }
-  errEl.hidden = false;
-  errEl.textContent = '登录失败，请重试';
-});
+}
 </script>
 </body>
 </html>

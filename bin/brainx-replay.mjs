@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** braintex-local-replay --run-id <run_id> | --decision-id <decision_id> */
+import '../src/env.js';
 import { openDb } from '../src/db.js';
 import { replay } from '../src/replay.js';
 

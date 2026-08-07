@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** braintex-local-sync --source fixture|feishu --consultant felix [--dry-run] */
+import '../src/env.js';
 import { openDb } from '../src/db.js';
 import { runSync } from '../src/sync.js';
 

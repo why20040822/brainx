@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "Brain X 职位决策工作台（本地版）：SQLite + node:http + 零依赖前端",
   "type": "module",
-  "engines": { "node": ">=22.5" },
+  "engines": {
+    "node": ">=22.5"
+  },
   "scripts": {
     "sync": "node bin/brainx-sync.mjs",
     "recommend": "node bin/brainx-recommend.mjs",
@@ -11,7 +13,7 @@
     "push": "node bin/brainx-push.mjs",
     "web": "node src/server.js",
     "fixture": "node scripts/build_fixture.mjs",
-    "test": "node --test tests/"
+    "test": "node --test --test-force-exit"
   },
   "bin": {
     "braintex-local-sync": "bin/brainx-sync.mjs",
