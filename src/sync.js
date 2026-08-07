@@ -54,10 +54,11 @@ const hashInput = (jobs) => {
 /**
  * 跑一次同步。返回 sync_runs 行。
  * 硬约束落实：缺 project_id / 缺客户或职位名 → 记 errors 且不入库。
+ * payload：桥接器直接喂规范化职位（source='bridge'），跳过文件/CLI 读取。
  */
-export function runSync(db, { source = 'fixture', consultant_id = 'felix', dry_run = false } = {}) {
+export function runSync(db, { source = 'fixture', consultant_id = 'felix', dry_run = false, payload = null } = {}) {
   const t0 = now();
-  const { as_of, jobs } = source === 'feishu' ? fetchFeishuJobs() : loadFixture();
+  const { as_of, jobs } = payload ?? (source === 'feishu' ? fetchFeishuJobs() : loadFixture());
   const errors = [];
   const valid = [];
   const seen = new Set();

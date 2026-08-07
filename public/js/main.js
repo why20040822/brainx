@@ -206,3 +206,26 @@ refresh().then(handleDeepLink).catch((e) => {
       Agent 暂时无法生成解释，仍可查看原始职位事实。</div>`;
   }
 });
+
+/* ── 实时更新（P2）：桥接器有变化 → SSE 推送 → 静默刷新 + 播报 ── */
+(() => {
+  const es = new EventSource('/api/v1/events');
+  let pending = null;
+  es.onmessage = (e) => {
+    let d;
+    try { d = JSON.parse(e.data); } catch { return; }
+    if (d.type === 'hello') return;
+    if (d.type === 'sync_error') { live(`桥接同步异常：${d.message || '未知'}（下轮自动重试）`); return; }
+    if (d.type === 'sync' || d.type === 'recommend') {
+      // 1s 去抖：sync 与 recommend 常成对到达，只刷一次
+      clearTimeout(pending);
+      pending = setTimeout(async () => {
+        await refresh();
+        live(d.type === 'sync'
+          ? `数据已更新（新消息 ${d.new_messages ?? 0} 条，命中 ${d.matched ?? 0}）`
+          : '推荐已刷新');
+      }, 1000);
+    }
+  };
+  es.onerror = () => live('实时连接断开，自动重连中…'); // EventSource 自带指数重连
+})();

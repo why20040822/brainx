@@ -15,6 +15,7 @@ import { buildDailyCard, buildSyncAlertCard, pushCard } from './push.js';
 import { signSession, verifySession, cookieOf } from './session.js';
 import { signState, verifyState, buildAuthorizeUrl, exchangeCode, oauthConfigured } from './oauth.js';
 import { findByOpenId } from './roster.js';
+import { startBridge } from './bridge.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
@@ -41,6 +42,18 @@ export function createServer(db = openDb(), deps = {}) {
     const s = verifySession(cookieOf(req));
     if (!s) err(res, 401, 'UNAUTHORIZED', '未登录或会话已过期');
     return s?.consultant_id || null;
+  };
+
+  // SSE 广播总线：桥接器/动作 → 所有打开的工作台页面
+  const sseClients = new Set();
+  const bus = {
+    emit(obj) {
+      const frame = `data: ${JSON.stringify(obj)}\n\n`;
+      for (const res of [...sseClients]) {
+        try { res.write(frame); } catch { sseClients.delete(res); }
+      }
+    },
+    clientCount: () => sseClients.size,
   };
 
   const routes = {
@@ -189,6 +202,17 @@ export function createServer(db = openDb(), deps = {}) {
 
     'GET /api/v1/dismiss-reasons': (req, res) => json(res, 200, { items: DISMISS_REASONS }),
 
+    // SSE：桥接器有变化时推 sync/recommend/sync_error；25s 心跳保活
+    'GET /api/v1/events': (req, res, cid) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8',
+                           'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+      res.write(`data: ${JSON.stringify({ type: 'hello', consultant_id: cid,
+        at: new Date().toISOString() })}\n\n`);
+      sseClients.add(res);
+      const hb = setInterval(() => { try { res.write(': hb\n\n'); } catch { /* closed */ } }, 25000);
+      req.on('close', () => { clearInterval(hb); sseClients.delete(res); });
+    },
+
     'POST /api/v1/push/preview': (req, res, cid) => {
       const sync = latestSync(db, cid);
       const snapshot = latestCompleteSnapshot(db, cid);
@@ -222,7 +246,7 @@ export function createServer(db = openDb(), deps = {}) {
     },
   };
 
-  return http.createServer(async (req, res) => {
+  const server = http.createServer(async (req, res) => {
     const u = new URL(req.url, 'http://x');
     let path = u.pathname;
     // 动态段匹配：/api/v1/opportunities/:id/engagement 等
@@ -259,9 +283,21 @@ export function createServer(db = openDb(), deps = {}) {
     }
     err(res, 404, 'NOT_FOUND', `${req.method} ${path}`);
   });
+  server.bus = bus; // 主块/测试用来广播桥接事件
+  return server;
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const port = Number(process.env.BRAINX_PORT || 3000);
-  createServer().listen(port, () => console.log(`Brain X 工作台: http://127.0.0.1:${port}`));
+  const db = openDb();
+  const server = createServer(db);
+  server.listen(port, () => console.log(`Brain X 工作台: http://127.0.0.1:${port}`));
+  // 桥接常驻：BRAINX_BRIDGE_INTERVAL_MS（默认 180s）；BRAINX_BRIDGE_OFF=1 关闭
+  if (process.env.BRAINX_BRIDGE_OFF !== '1') {
+    startBridge(db, server.bus, {
+      recommendFn: (cid) => recommend(db, cid, { top: 10 }),
+      consultantIdsFn: () => loadConsultants(db).map((c) => c.consultant_id),
+    });
+    console.log(`桥接器已启动（间隔 ${Number(process.env.BRAINX_BRIDGE_INTERVAL_MS || 180000) / 1000}s）`);
+  }
 }
