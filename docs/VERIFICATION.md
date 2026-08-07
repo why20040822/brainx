@@ -66,6 +66,14 @@
 - FLX 群推送**未测试**（需 Mia 确认才发群）
 - 定时推送 cron 未配置（`bin/brainx-push.mjs --send --target <id>` 已就绪）
 
+## 10. 飞书 OAuth 多顾问登录（2026-08-07 第二轮，commit 4e2d631+）
+
+- 花名册：migration 0003 `consultants` 表；种子 = FLX 群实拉成员（felix/mia/york 含 open_id），`bin/brainx-roster.mjs` 可在线刷新
+- 登录：飞书网页授权唯一正式入口；state 无状态 HMAC 防 CSRF；回调按 open_id 匹配花名册，不在册 fail-closed 拒登；session 绑定 open_id
+- 原身份选择器降为 `BRAINX_DEV_AUTH=1` 离线演示后门，默认关闭
+- 真机 E2E：浏览器走通 登录页→飞书授权→回调→以 mia 身份进工作台（空态正确，数据按顾问隔离）
+- 踩坑记录：① oidc/access_token 响应只含 token 族字段，身份必须再拉 /authen/v1/user_info；② 重定向 URL 白名单在安全设置，即时生效无需发版；③ lark-cli 的 secret 锁 keychain 不可取，brainx 用 .env（process.loadEnvFile 原生加载，gitignore 兜底）
+
 ## 9. 运行方式
 
 ```bash

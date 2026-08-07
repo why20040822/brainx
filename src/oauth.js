@@ -56,6 +56,16 @@ export async function exchangeCode(code, fetchImpl = fetch) {
   });
   const d2 = await r2.json();
   if (d2.code !== 0) throw new Error(`oidc/access_token 失败: ${d2.msg || d2.code}`);
-  const u = d2.data || {};
+  // 实测（2026-08-07）：oidc token 响应只含 token 族字段，无身份 → 必须再拉 user_info
+  const userToken = d2.data?.access_token;
+  if (!userToken) throw new Error('oidc/access_token 未返回 access_token');
+  const r3 = await fetchImpl('https://open.feishu.cn/open-apis/authen/v1/user_info', {
+    headers: { Authorization: `Bearer ${userToken}` },
+  });
+  const d3 = await r3.json();
+  if (d3.code !== 0) throw new Error(`user_info 失败: ${d3.msg || d3.code}`);
+  const u = d3.data || {};
+  // 排障日志：只打 open_id 前 10 位，绝不打完整身份信息
+  console.error(`[oauth] user_info open_id 前缀: ${String(u.open_id || 'MISSING').slice(0, 10)}`);
   return { open_id: u.open_id, name: u.name, en_name: u.en_name, avatar: u.avatar_url };
 }
