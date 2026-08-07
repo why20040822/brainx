@@ -16,6 +16,7 @@ import { signSession, verifySession, cookieOf } from './session.js';
 import { signState, verifyState, buildAuthorizeUrl, exchangeCode, oauthConfigured } from './oauth.js';
 import { findByOpenId } from './roster.js';
 import { startBridge } from './bridge.js';
+import { makeAutoPush } from './autopush.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
@@ -297,6 +298,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     startBridge(db, server.bus, {
       recommendFn: (cid) => recommend(db, cid, { top: 10 }),
       consultantIdsFn: () => loadConsultants(db).map((c) => c.consultant_id),
+      onRecommended: makeAutoPush(db), // 重大变化自动推卡；BRAINX_PUSH_AUTO=1 才真发
     });
     console.log(`桥接器已启动（间隔 ${Number(process.env.BRAINX_BRIDGE_INTERVAL_MS || 180000) / 1000}s）`);
   }

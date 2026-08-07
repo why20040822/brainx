@@ -74,6 +74,20 @@
 - 真机 E2E：浏览器走通 登录页→飞书授权→回调→以 mia 身份进工作台（空态正确，数据按顾问隔离）
 - 踩坑记录：① oidc/access_token 响应只含 token 族字段，身份必须再拉 /authen/v1/user_info；② 重定向 URL 白名单在安全设置，即时生效无需发版；③ lark-cli 的 secret 锁 keychain 不可取，brainx 用 .env（process.loadEnvFile 原生加载，gitignore 兜底）
 
+## 11. MCP 连接器 + 桥接器 + 实时更新（2026-08-07 第三轮，commit 04691d3 / a0d3c36）
+
+- **brainx-mcp**（04691d3）：零依赖 node:stdio NDJSON JSON-RPC 2.0，10 工具（consultants/workbench/recommendations/recommend_run/opportunity/engage/replay/record_outcome/sync_now/push_preview）；已注册 Claude Code / OpenCode / Codex 三端；真机冒烟 felix 工作台 READY、Top1 Goodnotes
+- **桥接器**（a0d3c36）：`src/bridge.js` 只刷事实不动关系（payload relation=null → runSync 跳过关系分支，Felix 策展关系不被团队池冲掉）；project_id 与 fixture 同一推导（P-FIX-*）同源公司自动合并；3 群消息游标增量（冷启动 desc 取最新页建游标，防从最早页翻页漏新消息）、message_id 幂等去重、公司名最长优先 + project_id 确定性 tie-break
+- **SSE**：`/api/v1/events`（登录鉴权，25s 心跳）；桥接有变化 → 广播 sync/recommend/sync_error → 前端 EventSource 1s 去抖静默刷新 + live 播报
+- 真机验证：3 顾问 × 29 行 Bitable complete=1；81 条群消息入库 4 条公司命中；游标推进；自动推荐 felix Top1 Goodnotes 79.7 / mia Rockflow 57.6 / york 空（无策展关系全 UNKNOWN，fail-closed 正确行为；mia 有数据因走过 fixture 同步拿到关系种子）
+
+## 12. 常驻服务 + 重大变化自动推卡（P4）
+
+- **launchd**：`bin/com.brainx.web.plist` 模板 + `bin/install-launchd.sh`（幂等；端口占用先报错防 KeepAlive 崩溃循环；curl 重试 5s 确认就绪）。已装：`gui/$(id -u)/com.brainx.web` state=running，登录自启 + 崩溃拉起（ThrottleInterval 10s）
+- **HEATING_ALERT**：`src/autopush.js` 比较最近两轮推荐——Top1 易主 或 Top3 内新出现 ACCEPT 档（含晋升）→ 红头卡片推**顾问本人 open_id**（机器人私聊）
+- 安全边界：`BRAINX_PUSH_AUTO=1` 才启用（默认关）；**绝不推群**（群推送需 Mia 显式确认，永远不进自动化路径）；run_id 幂等键防重发；推卡失败不影响桥接
+- 测试：autopush 5 例（diff 两种触发/幂等/关门/无 open_id/stub 断言不打真 CLI）；全套 35/35 绿
+
 ## 10. 运行方式
 
 ```bash
@@ -82,5 +96,8 @@ node scripts/build_fixture.mjs          # 重建 fixture（可选）
 node bin/brainx-sync.mjs                # 同步入库（60 行）
 node bin/brainx-recommend.mjs           # 生成推荐 run
 BRAINX_PORT=3100 BRAINX_BASE_URL=http://127.0.0.1:3100 node src/server.js
-# 浏览器打开 http://127.0.0.1:3100 → 选 Felix 进入
+# 浏览器打开 http://127.0.0.1:3100 → 飞书授权登录
+
+# 常驻（推荐）：登录自启 + 崩溃拉起 + 桥接器定时跑
+sh bin/install-launchd.sh               # 幂等；卸载见脚本头注释
 ```

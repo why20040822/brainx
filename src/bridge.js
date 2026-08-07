@@ -145,8 +145,8 @@ export function bridgeOnce(db, { consultant_ids, execImpl = lark } = {}) {
   return { changed, syncs, new_messages: newMessages, matched: matchedTotal, at: now() };
 }
 
-/** 常驻调度：服务器内 setInterval。有变化 → bus 广播 + 每位顾问自动推荐。 */
-export function startBridge(db, bus, { intervalMs, recommendFn, consultantIdsFn } = {}) {
+/** 常驻调度：服务器内 setInterval。有变化 → bus 广播 + 每位顾问自动推荐（+ onRecommended 钩子）。 */
+export function startBridge(db, bus, { intervalMs, recommendFn, consultantIdsFn, onRecommended } = {}) {
   const iv = intervalMs ?? Number(process.env.BRAINX_BRIDGE_INTERVAL_MS || 180000);
   let running = false;
   const tick = () => {
@@ -160,7 +160,10 @@ export function startBridge(db, bus, { intervalMs, recommendFn, consultantIdsFn 
           bus?.emit({ type: 'sync', at: out.at, new_messages: out.new_messages,
                       matched: out.matched, syncs: out.syncs });
           if (recommendFn) {
-            for (const cid of cids) { try { recommendFn(cid); } catch { /* 阻断不致命 */ } }
+            for (const cid of cids) {
+              try { recommendFn(cid); } catch { /* 阻断不致命 */ }
+              try { onRecommended?.(cid); } catch { /* 推卡失败不影响桥接 */ }
+            }
             bus?.emit({ type: 'recommend', at: now() });
           }
         }

@@ -74,6 +74,26 @@ export function buildSyncAlertCard(sync) {
     ] };
 }
 
+/** 重大变化提醒卡（P4）：Top1 易主 / ACCEPT 档新进 Top3。仅推顾问本人，绝不推群。 */
+export function buildHeatingAlertCard({ change_label, item }) {
+  const j = item.job;
+  return { config: { wide_screen_mode: true },
+    header: { template: 'red', title: { tag: 'plain_text',
+      content: `Brain X · 重大变化提醒 ${now().slice(5, 16).replace('T', ' ')}` } },
+    elements: [
+      { tag: 'markdown', content: `**${change_label}**\n`
+        + `**${j.role}**\n${j.company}${j.city ? ' · ' + j.city : ''} · ${REL_LABEL[j.relation] || j.relation}\n`
+        + `综合 **${item.score}** 分 · ${ACTION_LABEL[item.action] || item.action}\n`
+        + `理由：${item.reasons?.[1] || item.reasons?.[0] || '—'}` },
+      { tag: 'action', actions: [
+        btn('查看详情', `${BASE_URL}/?open=opportunity:${j.project_id}`, 'primary'),
+        btn('打开工作台', `${BASE_URL}/`),
+      ] },
+      { tag: 'note', elements: [{ tag: 'plain_text',
+        content: `run: ${(item.run_id || '').slice(0, 8)} · 自动推送（仅发本人）` }] },
+    ] };
+}
+
 /** 推送（幂等：consultant+kind+run_id 唯一；SENT 重复 → SKIPPED_DUPLICATE；FAILED 可重发并更新原行）。 */
 export function pushCard(db, { consultant_id, kind, run_id, card, target, send = false }) {
   const dup = db.prepare(`SELECT push_id, status FROM push_log
