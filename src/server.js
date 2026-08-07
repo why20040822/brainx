@@ -290,9 +290,11 @@ export function createServer(db = openDb(), deps = {}) {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const port = Number(process.env.BRAINX_PORT || 3000);
+  // 只绑回环：工作台含未脱敏业务数据，不应对局域网暴露（BRAINX_HOST 显式覆盖除外）
+  const host = process.env.BRAINX_HOST || '127.0.0.1';
   const db = openDb();
   const server = createServer(db);
-  server.listen(port, () => console.log(`Brain X 工作台: http://127.0.0.1:${port}`));
+  server.listen(port, host, () => console.log(`Brain X 工作台: http://${host}:${port}`));
   // 桥接常驻：BRAINX_BRIDGE_INTERVAL_MS（默认 180s）；BRAINX_BRIDGE_OFF=1 关闭
   if (process.env.BRAINX_BRIDGE_OFF !== '1') {
     startBridge(db, server.bus, {
