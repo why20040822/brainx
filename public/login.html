@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>登录 · Brain X</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body class="login-body">
+<main class="login-card" aria-labelledby="login-title">
+  <h1 id="login-title" class="login-brand">Brain X</h1>
+  <p class="login-sub">职位决策工作台 · 本地版</p>
+  <form id="login-form">
+    <fieldset>
+      <legend>选择你的身份进入：</legend>
+      <div id="consultant-list" role="radiogroup" aria-label="顾问列表">
+        <p class="muted" id="login-loading">加载中…</p>
+      </div>
+    </fieldset>
+    <button type="submit" class="btn btn-primary btn-block" id="login-btn" disabled>进 入 工 作 台</button>
+  </form>
+  <p class="login-foot muted">数据保存在本机 data/brainx.db</p>
+  <p class="error-text" id="login-error" role="alert" hidden></p>
+</main>
+<script type="module">
+const list = document.getElementById('consultant-list');
+const btn = document.getElementById('login-btn');
+const errEl = document.getElementById('login-error');
+let selected = null;
+try {
+  const r = await fetch('/api/v1/consultants');
+  const d = await r.json();
+  document.getElementById('login-loading')?.remove();
+  if (!d.items?.length) {
+    list.innerHTML = '<p class="muted">暂无顾问，请先在终端跑 <code>npm run sync</code> 导入数据</p>';
+  }
+  for (const c of d.items || []) {
+    const label = document.createElement('label');
+    label.className = 'consultant-option';
+    label.innerHTML = `<input type="radio" name="consultant" value="${c.consultant_id}">
+      <span>${c.display_name || c.consultant_id}</span>`;
+    label.querySelector('input').addEventListener('change', (e) => {
+      selected = e.target.value; btn.disabled = false;
+    });
+    list.appendChild(label);
+  }
+} catch (e) {
+  document.getElementById('login-loading').textContent = '加载失败：' + e.message;
+}
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!selected) return;
+  const r = await fetch('/api/v1/session', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ consultant_id: selected }),
+  });
+  if (r.status === 204) { location.href = '/'; return; }
+  errEl.hidden = false;
+  errEl.textContent = '登录失败，请重试';
+});
+</script>
+</body>
+</html>

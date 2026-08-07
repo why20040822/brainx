@@ -1,0 +1,164 @@
+{
+  "ok": true,
+  "identity": "user",
+  "data": {
+    "has_more": false,
+    "messages": [
+      {
+        "chat_id": "oc_a56daa7bcbb36c27ae2d5de16f01abf1",
+        "content": "York 姚堃 invited Mia 钟笑咪 to the group. New members can view all chat history.",
+        "create_time": "2026-07-27 15:57",
+        "deleted": false,
+        "message_app_link": "https://applink.feishu.cn/client/chat/open?openChatId=oc_a56daa7bcbb36c27ae2d5de16f01abf1\u0026position=7",
+        "message_id": "om_x100b6944b82e7cb4c23ffec3a7c654a",
+        "message_position": "7",
+        "msg_type": "system",
+        "sender": {
+          "id": "",
+          "id_type": "",
+          "sender_type": "",
+          "tenant_key": ""
+        },
+        "updated": false
+      },
+      {
+        "chat_id": "oc_a56daa7bcbb36c27ae2d5de16f01abf1",
+        "content": "好，按你关注的方向重新标注：\n\n---\n\n##### 📋 职位市场 — 7/24\n\n**🔧 产品**\n- **AI产品经理** — Kris 刘连福，北京，预付款客户，画像清晰着急\n- **AI产品** — Summer 侯亚菊，已回款30万客户，23%费率一次性\n- **AI产品一号位** — Devin 郭昱然，杭州SaaS电商方向，3-1职级，直对CEO/HRD\n\n**⚙️ 技术 / 工程**\n- **上海CTO** — Andy 王慧，急急急\n- **技术合伙人(Agent方向)** — May 雷玉洁，300w预算，杭州，直接对接创始人\n- **AI定线技术负责人** — Jack 林育仟，攀岩连锁20+店，含AI定线及开发\n- **数采硬件系统负责人** — Sunny 冯晓燕，深圳，具身数据方向\n\n**🧠 算法 / AI应用**\n- **VLA核心研究员 + data/training/infra** — Lina 冀晓敏，100万预付款客户，北京/深圳；不设上限看人，千万年薪可看研究负责人\n- **应用ML工程师** — Mango 孙毅，模型训练+产品workflow，欢迎应届博士\n- **视频生成多模态基模训练负责人** — Penny 黄芃芃，预算1000w，中美均可\n- **预训练模型leader + 具身数据平台** — Mae 梅咏琪，超强潜力具身初创\n- **3D物体姿态** — Mori 蒋小云，深圳，3天出offer\n- **后训练模型微调** — May 雷玉洁，上海or新加坡，25%费率\n- **AI平台架构/Agent开发/NLP算法** — May 雷玉洁，8-9个hc\n- **Zalando后端\u0026算法** — May 雷玉洁，深圳多hc\n- **硅谷独角兽远程：全栈/GPU运维/AI infra** — May 雷玉洁，23%费率\n\n**🖥️ 前后端**\n- **后端/全栈(AI Agent方向)** — Sunny 冯晓燕，字节明超平创业项目，A轮超亿美金\n- **前端/全栈工程师** — Sunny 冯晓燕，同上项目\n- **模型/Agent测试兼职** — Mae 梅咏琪，两周短期，可线上\n\n**📈 运营增长**\n- **海外用户增长(北美/欧洲)** — Sunny 冯晓燕，新言科技，AI Agent方向，从0搭建\n- **北美商务负责人/商业合伙人** — Jack 李智超，具身数据公司，可谈合伙人+原始股\n\n---\n\n##### 👤 人才市场 — 7/24\n\n**🧠 算法 / AI应用**\n- **Agent基座模型核心成员** — Ady 杜敌，字节TopSeed+华为天才少年+微软学者三料，负责Seed 2.1/2.0系列Agent优化算法，不主动求职，需创始团队亲自吸引 🔥\n- **世界模型方向应届博士** — Nina 倪慧，交大，金融+计算机背景，看上海量化\n- **NUS Robotics Lab应届硕博** — Leo 张嘉航，一堆优质，全国倾销\n\n**⚙️ 技术 / 工程**\n- **具身数据闭环leader** — Tom 汤翔，P8，985本硕，0-1搭建过具身机器人数据闭环，150W→180-200W，只看上海有实线管理\n- **车厂人形关节模组系统工程师** — Howard 刘嘉磊，9本港硕，深圳具身\n\n---\n\n汇总：昨天职位市场偏大规模发职位+小助理匹配，产品/工程/算法方向最密集的是 **May 雷玉洁的6个工程职位** 和 **Sunny 冯晓燕的新言科技全套岗位**。人才市场那边 **Ady 杜敌推的三料Agent人才** 和 **Tom 汤翔的数据闭环leader** 是最高价值线索。",
+        "create_time": "2026-07-25 11:47",
+        "deleted": false,
+        "message_app_link": "https://applink.feishu.cn/client/chat/open?openChatId=oc_a56daa7bcbb36c27ae2d5de16f01abf1\u0026position=6",
+        "message_id": "om_x100b697750f51ca4c2cc73cbc1ae600",
+        "message_position": "6",
+        "msg_type": "post",
+        "reply_to": "om_x100b69775267c8a8b172b1b0de762cb",
+        "sender": {
+          "id": "cli_a92b2376d8f85cd3",
+          "id_type": "app_id",
+          "sender_type": "app",
+          "tenant_key": "12835b807e0f5740"
+        },
+        "updated": false
+      },
+      {
+        "chat_id": "oc_a56daa7bcbb36c27ae2d5de16f01abf1",
+        "content": "帮我优先高亮 产品、技术、工程、算法、前后端、运营增长、AI应用相关的内容@ZP约克虾🦞",
+        "create_time": "2026-07-25 11:47",
+        "deleted": false,
+        "mentions": [
+          {
+            "id": "ou_3380667081b7fb2fe5887c1534f1192c",
+            "key": "@_user_1",
+            "name": "ZP约克虾🦞"
+          }
+        ],
+        "message_app_link": "https://applink.feishu.cn/client/chat/open?openChatId=oc_a56daa7bcbb36c27ae2d5de16f01abf1\u0026position=5",
+        "message_id": "om_x100b69775267c8a8b172b1b0de762cb",
+        "message_position": "5",
+        "msg_type": "text",
+        "sender": {
+          "id": "ou_f0159e0a97fac03109394839e2efeded",
+          "id_type": "open_id",
+          "name": "York 姚堃",
+          "sender_type": "user",
+          "tenant_key": "12835b807e0f5740"
+        },
+        "update_time": "2026-07-25 11:47",
+        "updated": true
+      },
+      {
+        "chat_id": "oc_a56daa7bcbb36c27ae2d5de16f01abf1",
+        "content": "昨天两个群的内容汇总如下：\n\n**📋 职位市场**（活跃，20+条职位/需求）\n\n- **Lina 冀晓敏**：预付款100万客户，招VLA研究员、data/training/infra、运控专家，千万年薪可看研究负责人\n- **May 雷玉洁**：6个工程方向职位 — Zalando、AI4S、AI+虚拟细胞、AI+工业微调、通用Agent技术合伙人(300w)、硅谷独角兽remote\n- **Summer 侯亚菊**：AI产品职位，已回款30万客户，23%费率一次性\n- **Sunny 冯晓燕**：数采硬件系统负责人(深圳) + 字节明超平创业项目后端/前端/海外增长\n- **Mae 梅咏琪**：具身初创招预训练模型leader + 数据平台，另招模型/agent测试兼职\n- **Devin 郭昱然**：杭州AI产品一号位，SaaS方向，直对CEO\n- **Jack 李智超**：北美商务负责人/商业合伙人，具身智能数据公司，可谈合伙人+原始股\n- **Andy 王慧**：上海CTO急招\n- **Jack 林育仟**：攀岩连锁招技术负责人(AI定线)、城市负责人等\n- **Mori 蒋小云**：3D物体姿态，深圳，3天出offer\n- **Kris 刘连福**：北京Agent工程师/AI产品经理，预付款客户\n- **Penny 黄芃芃**：视频生成多模态基模训练负责人，预算1000w，中美均可\n- **Rose 黄园园**：具身客户招投融资大牛，可谈合伙人\n- **Mango 孙毅**：应用ML工程师，欢迎应届博士\n\n---\n\n**👤 人才市场**（11条）\n\n- **Ady 杜敌**：字节TopSeed + 华为天才少年 + 微软学者三料人才，Agent基座模型核心成员，需创始团队亲自吸引\n- **Tom 汤翔**：具身数据闭环leader，P8，985本硕，150W→180-200W，只看上海\n- **Leo 张嘉航**：NUS Robotics Lab一堆优质应届硕博，全国倾销\n- **Howard 刘嘉磊**：车厂人形关节模组系统工程师，9本港硕，深圳具身\n- **Kate 石嘉琪**：知乎增长业务总经理\n- **Nina 倪慧**：交大应届博士，世界模型方向，看上海量化\n- 其余几条简短互动/回复\n\n职位市场还有更多内容没拉完，需要继续吗？",
+        "create_time": "2026-07-25 11:00",
+        "deleted": false,
+        "message_app_link": "https://applink.feishu.cn/client/chat/open?openChatId=oc_a56daa7bcbb36c27ae2d5de16f01abf1\u0026position=4",
+        "message_id": "om_x100b6976234af8a0c22c0f79c8d4a3e",
+        "message_position": "4",
+        "msg_type": "post",
+        "reply_to": "om_x100b6976270b50a4b36c4d345b1db22",
+        "sender": {
+          "id": "cli_a92b2376d8f85cd3",
+          "id_type": "app_id",
+          "sender_type": "app",
+          "tenant_key": "12835b807e0f5740"
+        },
+        "updated": false
+      },
+      {
+        "chat_id": "oc_a56daa7bcbb36c27ae2d5de16f01abf1",
+        "content": "@ZP约克虾🦞 看一下职位市场群和人才市场群，昨天都有哪些新内容",
+        "create_time": "2026-07-25 10:59",
+        "deleted": false,
+        "mentions": [
+          {
+            "id": "ou_3380667081b7fb2fe5887c1534f1192c",
+            "key": "@_user_1",
+            "name": "ZP约克虾🦞"
+          }
+        ],
+        "message_app_link": "https://applink.feishu.cn/client/chat/open?openChatId=oc_a56daa7bcbb36c27ae2d5de16f01abf1\u0026position=3",
+        "message_id": "om_x100b6976270b50a4b36c4d345b1db22",
+        "message_position": "3",
+        "msg_type": "text",
+        "sender": {
+          "id": "ou_f0159e0a97fac03109394839e2efeded",
+          "id_type": "open_id",
+          "name": "York 姚堃",
+          "sender_type": "user",
+          "tenant_key": "12835b807e0f5740"
+        },
+        "update_time": "2026-07-25 10:59",
+        "updated": true
+      },
+      {
+        "chat_id": "oc_a56daa7bcbb36c27ae2d5de16f01abf1",
+        "content": "York 姚堃 invited ZP约克虾🦞 to the group. New members can view all chat history.",
+        "create_time": "2026-07-25 10:37",
+        "deleted": false,
+        "message_app_link": "https://applink.feishu.cn/client/chat/open?openChatId=oc_a56daa7bcbb36c27ae2d5de16f01abf1\u0026position=2",
+        "message_id": "om_x100b697656bb70a0b390aee804c6544",
+        "message_position": "2",
+        "msg_type": "system",
+        "sender": {
+          "id": "",
+          "id_type": "",
+          "sender_type": "",
+          "tenant_key": ""
+        },
+        "updated": false
+      },
+      {
+        "chat_id": "oc_a56daa7bcbb36c27ae2d5de16f01abf1",
+        "content": "York 姚堃 started the group chat.",
+        "create_time": "2026-07-25 10:37",
+        "deleted": false,
+        "message_app_link": "https://applink.feishu.cn/client/chat/open?openChatId=oc_a56daa7bcbb36c27ae2d5de16f01abf1\u0026position=1",
+        "message_id": "om_x100b697659a100a0defa8ac35ad4472",
+        "message_position": "1",
+        "msg_type": "system",
+        "sender": {
+          "id": "",
+          "id_type": "",
+          "sender_type": "",
+          "tenant_key": ""
+        },
+        "updated": false
+      }
+    ],
+    "page_token": "",
+    "total": 7
+  },
+  "_notice": {
+    "skills": {
+      "command": "lark-cli update",
+      "current": "1.0.65",
+      "message": "lark-cli skills 1.0.65 out of sync with binary 1.0.67, run: lark-cli update",
+      "target": "1.0.67"
+    },
+    "update": {
+      "command": "lark-cli update",
+      "current": "1.0.67",
+      "latest": "1.0.84",
+      "message": "lark-cli 1.0.84 available, current 1.0.67, run: lark-cli update"
+    }
+  }
+}

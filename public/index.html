@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brain X · 今日职位决策</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="page">
+  <header id="wb-header" class="wb-header"></header>
+  <div id="banner-slot"></div>
+  <main id="main" aria-busy="true">
+    <section aria-labelledby="queue-title">
+      <h2 id="queue-title" class="section-title">今天建议先看的职位</h2>
+      <p class="section-sub" id="queue-sub"></p>
+      <div id="queue"></div>
+      <div class="expand-row" id="expand-slot"></div>
+    </section>
+    <section aria-labelledby="commit-title" id="commitments">
+      <h2 id="commit-title" class="section-title">我的承接</h2>
+      <div id="commit-strip"></div>
+      <div id="commit-list" class="commit-list"></div>
+    </section>
+  </main>
+</div>
+
+<div class="drawer-mask" id="drawer-mask"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" tabindex="-1"></aside>
+
+<div class="modal-mask" id="modal-mask"></div>
+<div class="modal" id="modal" role="alertdialog" aria-modal="true" aria-labelledby="modal-title" hidden></div>
+
+<div class="sr-only" aria-live="polite" id="live"></div>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
