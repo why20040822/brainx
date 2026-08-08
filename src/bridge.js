@@ -30,7 +30,9 @@ export const deriveProjectId = (company, role) =>
   'P-FIX-' + createHash('md5').update(`${company}|${role}`).digest('hex').slice(0, 8).toUpperCase();
 
 const lark = (args) => {
-  const out = execFileSync('lark-cli', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  // timeout 防 lark-cli 挂死（实测会无限 hang 且自我复活拖垮整机）；45s 上限杀掉
+  const out = execFileSync('lark-cli', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+    timeout: 45000, killSignal: 'SIGKILL' });
   return JSON.parse(out.slice(out.indexOf('{')));
 };
 
