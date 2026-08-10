@@ -120,3 +120,21 @@ sh bin/install-launchd.sh               # 幂等；卸载见脚本头注释
 **测试**：新增 feishu.test.mjs（7 例：加密往返/无明文落库/refresh 轮换/被拒降级/网络异常不标记/过期直拒/翻页与时间换算）+ visibility.test.mjs（6 例：可见性规则/HTTP 闸门/跨人 404/事件结果过滤/SSE 定向/回调落令牌）；bridgeOnce 变异步 + 按人隔离 3 例；全套 **51/51 绿**（本地 Node v26 + 服务器 Node v22 双验）。
 
 **服务器实测（47.110.93.137，2026-08-10）**：0005 迁移自动跑（user_version 5），93 条消息归属 mia，游标 ×2（全局+@mia）；桥接首轮三顾问 rows_read=29 complete=1（Bitable 走 lark-cli 回落）；无人有令牌 → 消息按设计暂停，各自重登即恢复。
+
+## 14. 框架结构修正（2026-08-10，源码审计驱动）
+
+**起因**：对全仓做框架级审计（对照 2026-08-03 设计文档与 PRD 纪律），发现 8 处结构缺陷并全部修正。每处附回归测试（新增 tests/framework.test.mjs，13 例）。
+
+**缺陷与修正**：
+1. **主链路断链（最重）**：recommend 只评「本人有 memberships 行」的职位，桥接按纪律不写关系、fixture 是 Felix 个人导出 → mia/york 推荐池恒为空。新增 `src/relations.js`（关系推导单一权威：本人行 > 他人 MY_JOB/PRIMARY_PM→OTHER_CONSULTANT > 团队池默认 TEAM_SHARED），recommend/latestRun/opportunity（HTTP+MCP）/engage 全部接入
+2. **fixture 属主污染**：mia 跑 fixture 同步会把 Felix 的 MY_JOB 继承成自己的。runSync 加属主守卫（仅 `consultant_owner=felix` 本人同步写关系）；`fetchFeishuJobs` 同步改 relation=null（修正前会给同步者写 TEAM_SHARED，把其策展关系到期冲掉）
+3. **接单守卫缺口**：OTHER_CONSULTANT 风险文案写「默认不可接单」但状态机不拦 → engage ACCEPT 对他人主做职位 409
+4. **状态机 VIEWED 不可达 + VIEW 降级关注**：current_engagement 视图不含 VIEWED（「已查看」永不浮现，UI 徽章失效）；VIEW 对 WATCHED 职位写 next_state=VIEWED 会静默冲掉关注。0006 重建视图纳入 VIEWED；VIEW 的 next_state 按当前态求值（WATCHED 保持 WATCHED）；UNWATCH 的 note『关注回滚』落 reason 列（修正前定义了从不持久化）
+5. **captured_at 失真**：每轮桥接 UPSERT 回刷 captured_at → scorer 新鲜度恒满分。改为六事实字段（公司/职位/城市/pipeline/HC/状态）任一变化（null 安全 IS NOT）才前进
+6. **raw_json 出网**：latestRun 整行展开 job_facts → workbench/recommendations/MCP 每条推荐携整段原始负载。剥离（opportunity 路由本就剥）
+7. **静态服务前缀漏洞**：`fp.startsWith(PUBLIC)` 裸前缀 → 兄弟目录 `public-x/…` 被误判内部。抽出 `isPathInside`（base+sep）导出并测试
+8. **migrations 纯位置记账 + push_log 唯一键漏洞**：user_version 序数跳文件会错位 → schema_migrations 按文件名记账（旧库 user_version=N 自动回填前 N 个文件名）；push_log `UNIQUE(consultant_id,kind,run_id)` 遇 NULL 失效（SYNC_ALERT 恒 NULL 可重复插）→ '' 哨兵 + 0006 回填存量
+
+**评分质量**：similarity 旧分词 `(?=[一-鿿])` 把中文逐字切开又被 length>1 过滤 → 纯中文职位相似度恒 0；改 CJK bigram（tokenize 导出），「增长负责人」×「增长经理」命中「增长」。
+
+**验证**：64/64 测试绿（51 旧 + 13 新）；真实库副本实测迁移：user_version 5→6，0006 单文件补跑，视图含 VIEWED，push_log 存量 NULL 全部回填为 ''，recommendations 150 行 / events 169 行无损。

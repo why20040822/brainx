@@ -3,16 +3,23 @@
  * 状态机：NEW→RECOMMENDED→VIEWED→WATCHED→ACCEPTED→RELEASED/COMPLETED
  *   DISMISSED 冷却 30 天；WATCHED 90 天无动作 → EXPIRED；关注 ≤10。
  * 单一事实源 = decision_events 账本（current_engagement 视图推导）。
+ *
+ * 2026-08-10 框架修正：
+ *   - VIEW 是审计事件不是降级动作：查看 WATCHED 职位 next_state 保持 WATCHED
+ *     （修正前会写成 VIEWED，关注被静默冲掉）；
+ *   - current_engagement 视图（0006 起）把 VIEWED 纳入推导，VIEWED 状态真正可达；
+ *   - UNWATCH 的 note『关注回滚』落进 reason 列（修正前定义了却从不持久化）。
  */
 import { now, uuid } from './db.js';
+import { relationOf } from './relations.js';
 
 const WATCH_LIMIT = 10;
 const COOLDOWN_DAYS = 30;
 const EXPIRE_DAYS = 90;
 
-/** 合法迁移表（WATCH 回滚 = WATCHED→VIEWED 用 RELEASE? 否——取消关注是独立回滚动作）。 */
+/** 合法迁移表。to 为函数时按当前态求 next_state（VIEW 不降级 WATCHED）。 */
 const TRANSITIONS = {
-  VIEW:    { from: ['NEW', 'RECOMMENDED', 'WATCHED'], to: 'VIEWED', event: 'VIEWED' },
+  VIEW:    { from: ['NEW', 'RECOMMENDED', 'VIEWED', 'WATCHED'], to: (s) => (s === 'WATCHED' ? 'WATCHED' : 'VIEWED'), event: 'VIEWED' },
   WATCH:   { from: ['NEW', 'RECOMMENDED', 'VIEWED'], to: 'WATCHED', event: 'WATCHED' },
   UNWATCH: { from: ['WATCHED'], to: 'VIEWED', event: 'RELEASED', note: '关注回滚' },
   ACCEPT:  { from: ['WATCHED', 'VIEWED', 'RECOMMENDED'], to: 'ACCEPTED', event: 'ACCEPTED', confirm: true },
@@ -70,6 +77,11 @@ export function engage(db, consultant_id, project_id, action,
   if (t.reason && !reason) return { ok: false, status: 422, error: '暂不考虑必须选择原因' };
   if (t.reason && !DISMISS_REASONS.includes(reason)) return { ok: false, status: 422, error: '原因不在枚举内' };
 
+  // 接单守卫：其他顾问主做的职位只能机会发现（推导关系单一权威 = relations.js）
+  if (action === 'ACCEPT' && relationOf(db, consultant_id, project_id) === 'OTHER_CONSULTANT') {
+    return { ok: false, status: 409, error: '其他顾问主做职位：只能机会发现，不可直接接单（先沟通认领）' };
+  }
+
   if (action === 'WATCH') {
     const cd = inCooldown(db, consultant_id, project_id);
     if (cd) return { ok: false, status: 409, error: `冷却期至 ${cd.slice(0, 10)}，暂不可关注` };
@@ -79,13 +91,14 @@ export function engage(db, consultant_id, project_id, action,
   }
 
   const event_id = uuid();
+  const next = typeof t.to === 'function' ? t.to(cur.state) : t.to;
   db.prepare(`INSERT INTO decision_events
     (event_id, event_type, actor, occurred_at, project_id, decision_id, policy_version,
      idempotency_key, prev_state, next_state, reason, payload_json)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
     .run(event_id, t.event, consultant_id, now(), project_id, null, null,
-         idempotency_key, cur.state, t.to, reason || null, '{}');
-  return { ok: true, already: false, event_id, state: t.to,
+         idempotency_key, cur.state, next, t.note || reason || null, '{}');
+  return { ok: true, already: false, event_id, state: next,
            legal_actions: legalActions(db, consultant_id, project_id) };
 }
 

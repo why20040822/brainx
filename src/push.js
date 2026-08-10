@@ -94,10 +94,13 @@ export function buildHeatingAlertCard({ change_label, item }) {
     ] };
 }
 
-/** 推送（幂等：consultant+kind+run_id 唯一；SENT 重复 → SKIPPED_DUPLICATE；FAILED 可重发并更新原行）。 */
+/** 推送（幂等：consultant+kind+run_id 唯一；SENT 重复 → SKIPPED_DUPLICATE；FAILED 可重发并更新原行）。
+ * run_id 为空统一落 '' 哨兵：SQLite UNIQUE 视 NULL 互不相等，NULL 时唯一键形同虚设
+ * （SYNC_ALERT 恒无 run_id，修正前可并发重复插行）。存量 NULL 由 0006 迁移回填。 */
 export function pushCard(db, { consultant_id, kind, run_id, card, target, send = false }) {
+  const rid = run_id ?? '';
   const dup = db.prepare(`SELECT push_id, status FROM push_log
-    WHERE consultant_id=? AND kind=? AND run_id IS ?`).get(consultant_id, kind, run_id ?? null);
+    WHERE consultant_id=? AND kind=? AND run_id=?`).get(consultant_id, kind, rid);
   if (dup && dup.status !== 'FAILED') {
     // 唯一键（consultant+kind+run_id）即幂等保证：已成功的推送跳过，
     // 返回首次记录——该 run 在 push_log 中永远只有一条成功记录。
@@ -134,6 +137,6 @@ export function pushCard(db, { consultant_id, kind, run_id, card, target, send =
   const push_id = uuid();
   db.prepare(`INSERT INTO push_log (push_id, consultant_id, kind, run_id, card_json, target, message_id, status, error, created_at)
     VALUES (?,?,?,?,?,?,?,?,?,?)`)
-    .run(push_id, consultant_id, kind, run_id ?? null, JSON.stringify(card), target, message_id, status, error, now());
+    .run(push_id, consultant_id, kind, rid, JSON.stringify(card), target, message_id, status, error, now());
   return { ok: status !== 'FAILED', push_id, status, message_id, error };
 }

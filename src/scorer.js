@@ -36,6 +36,26 @@ const kwOverlap = (text, kws) => {
   return Math.min(100, Math.round((hit / Math.max(2, Math.ceil(kws.length / 2))) * 100));
 };
 
+/** 相似度分词（2026-08-10 框架修正）：
+ * 修正前 `(?=[一-鿿])` 把中文逐字切开，而相似度只统计 length>1 的 token
+ * → 纯中文职位（公司/职位名）相似度恒 0，该维度对中文名完全失效。
+ * 现在：连续 CJK 段切 bigram（「增长负责人」→ 增长/长负/负责/责人），
+ * 非 CJK 片段按空白整词保留；单字仍不入集（无区分度）。 */
+export function tokenize(text) {
+  const out = new Set();
+  for (const piece of String(text || '').toLowerCase().split(/[\s,，、/|·;；:：()（）【】\-—_]+/)) {
+    if (!piece) continue;
+    const runs = piece.match(/[一-鿿]+/g) || [];
+    for (const run of runs) {
+      if (run.length < 2) continue;
+      if (run.length === 2) { out.add(run); continue; }
+      for (let i = 0; i < run.length - 1; i++) out.add(run.slice(i, i + 2));
+    }
+    for (const w of piece.split(/[一-鿿]+/)) if (w.length > 1) out.add(w);
+  }
+  return out;
+}
+
 function daysSince(iso, nowIso) {
   if (!iso) return 9999;
   return (Date.parse(nowIso) - Date.parse(iso)) / 86400000;
@@ -72,10 +92,10 @@ export function scoreJob(job, relation, ctx) {
   // 历史相似 15%：与历史 MY_JOB 文本重合（含 CLOSED 历史，补全文档 §17.2-2）
   dims.similarity = ctx.historical_texts.length
     ? Math.max(...ctx.historical_texts.map((h) => {
-        const a = new Set(text.toLowerCase().split(/\s+|(?=[一-鿿])/));
-        const b = new Set(h.toLowerCase().split(/\s+|(?=[一-鿿])/));
+        const a = tokenize(text);
+        const b = tokenize(h);
         let inter = 0;
-        for (const t of b) if (t.length > 1 && a.has(t)) inter++;
+        for (const t of b) if (a.has(t)) inter++;
         return Math.min(100, inter * 12);
       }))
     : null;

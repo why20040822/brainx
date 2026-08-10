@@ -4,7 +4,7 @@
 import './env.js';
 import http from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
-import { extname, join, normalize, dirname } from 'node:path';
+import { extname, join, normalize, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDb } from './db.js';
 import { runSync, latestSync, latestCompleteSnapshot } from './sync.js';
@@ -19,12 +19,17 @@ import { startBridge } from './bridge.js';
 import { makeAutoPush } from './autopush.js';
 import { saveUserTokens, tokenStatus } from './feishu.js';
 import { jobVisibleTo } from './visibility.js';
+import { relationOf } from './relations.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
                '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
                '.svg': 'image/svg+xml', '.png': 'image/png' };
+
+/** 目录穿越判定：必须带分隔符前缀——裸 startsWith(base) 会把兄弟目录
+ * （public-x/… 前缀同为 /…/public）误判为内部（2026-08-10 框架修正）。 */
+export const isPathInside = (base, fp) => fp === base || fp.startsWith(base + sep);
 
 const json = (res, code, obj) => {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -167,8 +172,9 @@ export function createServer(db = openDb(), deps = {}) {
       const job = db.prepare('SELECT * FROM job_facts WHERE project_id=?').get(id);
       // fail-closed：与自己无任何关系的职位一律 404（不泄露存在性），事实明细不出库
       if (!job || !jobVisibleTo(db, cid, id)) return err(res, 404, 'NOT_FOUND', '职位不存在');
-      const rel = db.prepare(`SELECT relation, source, valid_from FROM job_memberships
+      const relRow = db.prepare(`SELECT relation, source, valid_from FROM job_memberships
         WHERE project_id=? AND consultant_id=? AND valid_to IS NULL`).get(id, cid);
+      const rel = relationOf(db, cid, id); // 推导关系单一权威（relations.js）
       const eng = currentState(db, cid, id);
       const events = db.prepare(`SELECT event_type, occurred_at, actor, reason FROM decision_events
         WHERE project_id=? AND actor=? ORDER BY occurred_at, id`).all(id, cid);
@@ -177,8 +183,8 @@ export function createServer(db = openDb(), deps = {}) {
       const outs = db.prepare(`SELECT stage, value_json, observed_at FROM job_outcomes
         WHERE project_id=? AND consultant_id=? ORDER BY observed_at`).all(id, cid);
       json(res, 200, {
-        job: { ...job, raw_json: undefined, relation: rel?.relation || 'UNKNOWN' },
-        relation: rel || { relation: 'UNKNOWN' },
+        job: { ...job, raw_json: undefined, relation: rel },
+        relation: { relation: rel, source: relRow?.source || null, valid_from: relRow?.valid_from || null },
         engagement_state: eng.state, legal_actions: legalActions(db, cid, id),
         events, outcomes: outs.map((o) => ({ ...o, value: JSON.parse(o.value_json) })),
         latest_recommendation: rec ? { decision_id: rec.decision_id, score: rec.score,
@@ -289,7 +295,7 @@ export function createServer(db = openDb(), deps = {}) {
       if (path === '/') path = '/index.html';
       if (path === '/login') path = '/login.html';
       const fp = normalize(join(PUBLIC, path));
-      if (fp.startsWith(PUBLIC) && existsSync(fp) && statSync(fp).isFile()) {
+      if (isPathInside(PUBLIC, fp) && existsSync(fp) && statSync(fp).isFile()) {
         res.writeHead(200, { 'Content-Type': MIME[extname(fp)] || 'application/octet-stream' });
         return res.end(readFileSync(fp));
       }

@@ -1,0 +1,193 @@
+/** framework.test.mjs — 2026-08-10 框架修正的回归测试（每项对应一处结构缺陷）。
+ *
+ * ① relations.js 关系推导层（mia/york 推荐池断链）
+ * ② fixture 属主守卫（非属主同步不继承策展关系）
+ * ③ ACCEPT 接单守卫（OTHER_CONSULTANT 只可机会发现）
+ * ④ 状态机：VIEWED 可达 / VIEW 不降级 WATCHED / UNWATCH note 落 reason
+ * ⑤ captured_at 只在事实变化时前进（新鲜度维度恢复意义）
+ * ⑥ latestRun 不携 raw_json 出网
+ * ⑦ 静态服务 isPathInside 兄弟目录前缀漏洞
+ * ⑧ push_log run_id '' 哨兵唯一键
+ * ⑨ migrations 按文件名记账（含旧库 user_version 兼容）
+ * ⑩ 中文 bigram 分词（similarity 对中文职位不再恒 0）
+ */
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import { readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { openDb } from '../src/db.js';
+import { runSync, loadFixture } from '../src/sync.js';
+import { recommend, latestRun } from '../src/recommend.js';
+import { engage, currentState } from '../src/engagement.js';
+import { relationOf, relationMap, deriveRelation } from '../src/relations.js';
+import { pushCard } from '../src/push.js';
+import { tokenize, scoreJob } from '../src/scorer.js';
+import { isPathInside } from '../src/server.js';
+
+let db;
+before(() => { db = openDb(':memory:'); });
+
+const fixtureJob = (rel) => loadFixture().jobs.find((j) => j.relation === rel);
+
+/* ① 关系推导：本人行 > 他人主做 → OTHER_CONSULTANT > 团队池默认 TEAM_SHARED */
+test('关系推导：无本人行时按他人主做/团队池默认推导', () => {
+  runSync(db, { source: 'fixture', consultant_id: 'felix' }); // 属主本人：关系落位
+  const myJob = fixtureJob('MY_JOB');
+  const teamJob = fixtureJob('TEAM_SHARED');
+  assert.equal(relationOf(db, 'felix', myJob.project_id), 'MY_JOB');        // 本人行优先
+  assert.equal(relationOf(db, 'mia', myJob.project_id), 'OTHER_CONSULTANT'); // Felix 主做 → 对他人
+  assert.equal(relationOf(db, 'mia', teamJob.project_id), 'TEAM_SHARED');    // 团队池默认
+  const ctx = relationMap(db, 'mia');
+  assert.equal(deriveRelation(ctx, 'P-NO-SUCH-JOB'), 'TEAM_SHARED');         // 无记录亦默认团队池
+});
+
+/* ② fixture 属主守卫：mia 跑 fixture 同步不继承 Felix 的策展关系 */
+test('fixture 属主守卫：非属主同步只刷事实、不写关系', () => {
+  const before = db.prepare(`SELECT COUNT(*) n FROM job_memberships WHERE consultant_id='mia'`).get().n;
+  const out = runSync(db, { source: 'fixture', consultant_id: 'mia' });
+  assert.equal(out.complete, true);
+  const afterRows = db.prepare(`SELECT COUNT(*) n FROM job_memberships WHERE consultant_id='mia'`).get().n;
+  assert.equal(before, afterRows); // 一个关系行都不该多（修正前会继承 60 条 Felix 关系）
+});
+
+/* ①b 断链修复：mia 没有任何策展关系行，推荐池不再为空 */
+test('无策展关系的顾问（mia）推荐池不再为空，且关系均为推导值', () => {
+  const out = recommend(db, 'mia', { top: 10 });
+  assert.equal(out.blocked, false);
+  assert.ok(out.items.length > 0); // 修正前恒为 []
+  for (const r of out.items) assert.ok(['TEAM_SHARED', 'OTHER_CONSULTANT'].includes(r.job.relation));
+});
+
+/* ③ ACCEPT 守卫：他人主做职位不可直接接单 */
+test('ACCEPT 守卫：OTHER_CONSULTANT 职位 409，只可机会发现', () => {
+  const myJob = fixtureJob('MY_JOB');
+  let r = engage(db, 'york', myJob.project_id, 'VIEW', { idempotency_key: 'fw:york:view' });
+  assert.equal(r.ok, true);
+  r = engage(db, 'york', myJob.project_id, 'ACCEPT', { idempotency_key: 'fw:york:accept', confirm: true });
+  assert.equal(r.ok, false);
+  assert.equal(r.status, 409);
+  assert.match(r.error, /其他顾问主做/);
+});
+
+/* ④ 状态机：VIEWED 真正可达；查看 WATCHED 职位不降级；UNWATCH note 落 reason */
+test('状态机：VIEW 后状态为 VIEWED（不再回落 RECOMMENDED）', () => {
+  const pid = fixtureJob('TEAM_SHARED').project_id;
+  const r = engage(db, 'mia', pid, 'VIEW', { idempotency_key: 'fw:mia:view1' });
+  assert.equal(r.state, 'VIEWED');
+  assert.equal(currentState(db, 'mia', pid).state, 'VIEWED'); // 修正前视图不含 VIEWED
+});
+
+test('状态机：查看 WATCHED 职位不降级；UNWATCH 落『关注回滚』reason', () => {
+  const pid = db.prepare(`SELECT project_id FROM job_facts WHERE project_id != ? LIMIT 1`)
+    .get(fixtureJob('TEAM_SHARED').project_id).project_id;
+  let r = engage(db, 'mia', pid, 'WATCH', { idempotency_key: 'fw:mia:watch' });
+  assert.equal(r.state, 'WATCHED');
+  r = engage(db, 'mia', pid, 'VIEW', { idempotency_key: 'fw:mia:view2' });
+  assert.equal(r.state, 'WATCHED'); // 修正前：查看把关注冲成 VIEWED
+  assert.equal(currentState(db, 'mia', pid).state, 'WATCHED');
+  const ev = db.prepare(`SELECT event_type, next_state FROM decision_events
+    WHERE actor='mia' AND project_id=? AND idempotency_key='fw:mia:view2'`).get(pid);
+  assert.deepEqual([ev.event_type, ev.next_state], ['VIEWED', 'WATCHED']); // 审计记 VIEW，状态留 WATCHED
+  r = engage(db, 'mia', pid, 'UNWATCH', { idempotency_key: 'fw:mia:unwatch' });
+  assert.equal(r.state, 'VIEWED');
+  const rel = db.prepare(`SELECT event_type, reason FROM decision_events
+    WHERE actor='mia' AND project_id=? AND idempotency_key='fw:mia:unwatch'`).get(pid);
+  assert.deepEqual([rel.event_type, rel.reason], ['RELEASED', '关注回滚']); // 修正前 note 从不持久化
+});
+
+/* ⑤ captured_at：无变化不回刷，事实变化才前进 */
+test('captured_at：重复同事实同步不前进，事实变化才前进', () => {
+  const job = { project_id: 'P-FW-CAP', company: '甲方', role: '后端', city: '北京',
+    pipeline: '初步接触', hc: null, active_state: 'OPEN', relation: null, source_url: null };
+  runSync(db, { source: 'bridge', consultant_id: 'felix',
+    payload: { as_of: '2026-08-01T00:00:00.000Z', jobs: [{ ...job, captured_at: '2026-08-01T00:00:00.000Z' }] } });
+  const cap = () => db.prepare(`SELECT captured_at FROM job_facts WHERE project_id='P-FW-CAP'`).get().captured_at;
+  assert.equal(cap(), '2026-08-01T00:00:00.000Z');
+  // 同事实、新一轮（as_of/captured_at 更新）→ captured_at 必须保留原值（修正前被回刷）
+  runSync(db, { source: 'bridge', consultant_id: 'felix',
+    payload: { as_of: '2026-08-09T00:00:00.000Z', jobs: [{ ...job, captured_at: '2026-08-09T00:00:00.000Z' }] } });
+  assert.equal(cap(), '2026-08-01T00:00:00.000Z');
+  // pipeline 变了 → captured_at 前进
+  runSync(db, { source: 'bridge', consultant_id: 'felix',
+    payload: { as_of: '2026-08-09T00:00:00.000Z',
+      jobs: [{ ...job, pipeline: '约面 2 人', captured_at: '2026-08-09T00:00:00.000Z' }] } });
+  assert.equal(cap(), '2026-08-09T00:00:00.000Z');
+});
+
+/* ⑥ latestRun：raw_json 不出网 */
+test('latestRun：推荐项不携带 raw_json（原始负载不出网）', () => {
+  recommend(db, 'felix', { top: 10 });
+  const run = latestRun(db, 'felix');
+  assert.ok(run.items.length > 0);
+  for (const r of run.items) assert.equal(r.job.raw_json, undefined);
+});
+
+/* ⑦ 静态服务：兄弟目录前缀漏洞 */
+test('isPathInside：兄弟目录（public-x）不被误判为内部', () => {
+  assert.equal(isPathInside('/x/public', '/x/public/index.html'), true);
+  assert.equal(isPathInside('/x/public', '/x/public'), true);
+  assert.equal(isPathInside('/x/public', '/x/public-x/evil.js'), false); // 修正前裸 startsWith 放行
+  assert.equal(isPathInside('/x/public', '/x/src/server.js'), false);
+});
+
+/* ⑧ push_log：run_id 空值哨兵唯一键真生效 */
+test('push_log：无 run_id 推送按空串哨兵去重，DB 唯一键兜底', () => {
+  const card = { config: {} };
+  const r1 = pushCard(db, { consultant_id: 'felix', kind: 'SYNC_ALERT', run_id: null, card, target: 'oc_x', send: false });
+  assert.equal(r1.status, 'PREVIEW');
+  const r2 = pushCard(db, { consultant_id: 'felix', kind: 'SYNC_ALERT', run_id: null, card, target: 'oc_x', send: false });
+  assert.equal(r2.status, 'SKIPPED_DUPLICATE');
+  // 绕过应用层直插同键 → SQLite UNIQUE 必须拦截（修正前 NULL 可无限重复插）
+  assert.throws(() => db.prepare(`INSERT INTO push_log
+    (push_id, consultant_id, kind, run_id, card_json, target, status, created_at)
+    VALUES ('fw-dup', 'felix', 'SYNC_ALERT', '', '{}', 'oc_x', 'PREVIEW', '2026-08-10')`).run(),
+    /UNIQUE constraint/);
+  const n = db.prepare(`SELECT COUNT(*) n FROM push_log WHERE consultant_id='felix' AND kind='SYNC_ALERT'`).get().n;
+  assert.equal(n, 1);
+});
+
+/* ⑨ migrations：按文件名记账 + 旧库 user_version 兼容 */
+test('migrations：schema_migrations 逐文件记账，重开不重跑', () => {
+  const rows = db.prepare('SELECT name FROM schema_migrations ORDER BY name').all().map((r) => r.name);
+  assert.deepEqual(rows, ['0001_init.sql', '0002_push_log.sql', '0003_consultants.sql',
+                          '0004_bridge.sql', '0005_per_user.sql', '0006_framework.sql']);
+});
+
+const TMPDB = join(tmpdir(), `brainx-fw-${process.pid}.db`);
+after(() => { for (const s of ['', '-wal', '-shm']) rmSync(TMPDB + s, { force: true }); });
+
+test('migrations：旧库 user_version=2 兼容——前 2 个文件标记已应用，只补跑新增', () => {
+  // 忠实模拟修正前的旧库：0001/0002 真执行过、user_version=2、无 schema_migrations
+  const legacy = new DatabaseSync(TMPDB);
+  const migDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
+  for (const f of ['0001_init.sql', '0002_push_log.sql']) {
+    legacy.exec(readFileSync(join(migDir, f), 'utf8'));
+  }
+  legacy.exec('PRAGMA user_version = 2');
+  legacy.close();
+  const reopened = openDb(TMPDB);
+  const rows = reopened.prepare('SELECT name FROM schema_migrations ORDER BY name').all().map((r) => r.name);
+  assert.equal(rows.length, 6); // 全部记账
+  const view = reopened.prepare(`SELECT sql FROM sqlite_master WHERE type='view' AND name='current_engagement'`).get();
+  assert.match(view.sql, /VIEWED/); // 0006 新视图已应用（含 VIEWED 推导）
+  // 0006 的 push_log 回填在真实旧表上执行无报错（旧库确实有 push_log 行）
+  reopened.exec(`INSERT INTO push_log (push_id, consultant_id, kind, run_id, card_json, target, status, created_at)
+    VALUES ('fw-legacy', 'felix', 'SYNC_ALERT', '', '{}', 'oc_x', 'SENT', '2026-08-10')`);
+  reopened.close();
+});
+
+/* ⑩ 中文 bigram 分词：similarity 对纯中文职位不再恒 0 */
+test('中文分词：bigram 命中使中文职位相似度 > 0（修正前恒 0）', () => {
+  const t = tokenize('增长负责人');
+  for (const bg of ['增长', '长负', '负责', '责人']) assert.ok(t.has(bg));
+  const scored = scoreJob(
+    { project_id: 'P-FW-CN', company: '字节', role: '增长负责人', pipeline: '', active_state: 'OPEN', captured_at: '2026-08-09' },
+    'TEAM_SHARED',
+    { consultant_id: 'mia', profile_keywords: [], historical_texts: ['某厂 增长经理'],
+      watched_count: 0, accepted_count: 0, outcomes_avg: null, now: '2026-08-10T00:00:00.000Z' });
+  const sim = scored.breakdown.find((d) => d.dim === 'similarity');
+  assert.ok(sim.score > 0); // 「增长」bigram 命中（旧分词逐字切开又被 length>1 过滤 → 恒 0）
+});

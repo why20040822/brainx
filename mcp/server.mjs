@@ -15,6 +15,7 @@ import { engage, commitmentSummary, currentState, legalActions, DISMISS_REASONS 
 import { replay, recordOutcome } from '../src/replay.js';
 import { buildDailyCard, buildSyncAlertCard } from '../src/push.js';
 import { jobVisibleTo } from '../src/visibility.js';
+import { relationOf } from '../src/relations.js';
 
 const db = openDb();
 
@@ -73,8 +74,7 @@ const TOOLS = {
       const job = db.prepare('SELECT * FROM job_facts WHERE project_id=?').get(pid);
       // 与 HTTP 同一可见性规则（visibility.js 单一权威）：无关系 = NOT_FOUND
       if (!job || !jobVisibleTo(db, cid, pid)) return { error: 'NOT_FOUND', project_id: pid };
-      const rel = db.prepare(`SELECT relation, source, valid_from FROM job_memberships
-        WHERE project_id=? AND consultant_id=? AND valid_to IS NULL`).get(pid, cid);
+      const rel = relationOf(db, cid, pid); // 推导关系单一权威（relations.js）
       const eng = currentState(db, cid, pid);
       const events = db.prepare(`SELECT event_type, occurred_at, actor, reason FROM decision_events
         WHERE project_id=? AND actor=? ORDER BY occurred_at, id`).all(pid, cid);
@@ -83,7 +83,7 @@ const TOOLS = {
       const outs = db.prepare(`SELECT stage, value_json, observed_at FROM job_outcomes
         WHERE project_id=? AND consultant_id=? ORDER BY observed_at`).all(pid, cid);
       return {
-        job: { ...job, raw_json: undefined }, relation: rel?.relation || 'UNKNOWN',
+        job: { ...job, raw_json: undefined, relation: rel }, relation: rel,
         engagement_state: eng.state, legal_actions: legalActions(db, cid, pid),
         events, outcomes: outs.map((o) => ({ ...o, value: JSON.parse(o.value_json) })),
         latest_recommendation: rec ? { decision_id: rec.decision_id, score: rec.score,

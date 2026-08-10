@@ -4,6 +4,15 @@
  * source=feishu：经 lark-cli 直读职位盘点 Bitable（L2 源，无 project_id →
  *   按硬约束进 errors，不落 job_facts——架构后果见补全文档 §17.2）。
  * 重复同步：job_facts UPSERT（project_id PRIMARY KEY），行数不增。
+ *
+ * 2026-08-10 框架修正（事实/关系分离纪律统一）：
+ *   - fixture 是 Felix 个人策展导出（文件名即属主）：只有 consultant_id 属主本人
+ *     同步时才写关系行——修正前 mia/york 跑 fixture 同步会把 Felix 的 MY_JOB
+ *     继承成自己的关系（数据污染）；
+ *   - fetchFeishuJobs 改为 relation=null（与 bridge 同一纪律）——修正前它给每个
+ *     同步者写 TEAM_SHARED，会把该顾问既有策展关系（MY_JOB/PRIMARY_PM）到期冲掉；
+ *   - captured_at 只在事实字段（公司/职位/城市/pipeline/HC/状态）变化时前进——
+ *     修正前每轮桥接 UPSERT 都回刷 captured_at，scorer 新鲜度维度恒为满分、失去意义。
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -14,12 +23,17 @@ import { now, uuid } from './db.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+/** fixture 属主：Felix 个人策展导出。关系行只许属主本人同步时落位。 */
+export const FIXTURE_OWNER = 'felix';
+
 export function loadFixture() {
   const f = JSON.parse(readFileSync(join(ROOT, 'fixtures', 'ttc_jobs_felix.json'), 'utf8'));
-  return { as_of: f.exported_at, jobs: f.jobs };
+  return { as_of: f.exported_at, jobs: f.jobs, consultant_owner: f.consultant_id || FIXTURE_OWNER };
 }
 
-/** lark-cli 读职位盘点 Bitable（L2 飞书源实测通道）。 */
+/** lark-cli 读职位盘点 Bitable（L2 飞书源实测通道）。
+ * relation=null：本函数只喂事实，关系一律交给 fixture 策展 + relations.js 推导，
+ * 防止 TEAM_SHARED 把同步者既有策展关系冲掉（与 bridge.js 头部纪律一致）。 */
 export function fetchFeishuJobs() {
   const out = execFileSync('lark-cli', [
     'base', '+record-list', '--base-token', 'RR5NbWHEfacz4jsRYMocy1qAnSh',
@@ -36,7 +50,7 @@ export function fetchFeishuJobs() {
         company: flat(rec['公司']), role: flat(rec['职位']) || '职位待定',
         city: flat(rec['地点']) || null, pipeline: flat(rec['还做吗']) || null,
         active_state: /无|待定/.test(flat(rec['还做吗'])) ? 'COOLING' : 'OPEN',
-        relation: 'TEAM_SHARED', relation_note: flat(rec['主做']) || '团队池',
+        relation: null, relation_note: flat(rec['主做']) || null, // 事实/关系分离（见头注）
         source_url: `feishu://base/RR5NbWHEfacz4jsRYMocy1qAnSh?record=${d.record_id_list[i]}`,
       };
     }).filter((j) => j.company && j.company !== 'TTC'),
@@ -55,10 +69,13 @@ const hashInput = (jobs) => {
  * 跑一次同步。返回 sync_runs 行。
  * 硬约束落实：缺 project_id / 缺客户或职位名 → 记 errors 且不入库。
  * payload：桥接器直接喂规范化职位（source='bridge'），跳过文件/CLI 读取。
+ * 关系落位守卫：payload 声明了 consultant_owner 时，只有属主本人同步才写关系行。
  */
 export function runSync(db, { source = 'fixture', consultant_id = 'felix', dry_run = false, payload = null } = {}) {
   const t0 = now();
-  const { as_of, jobs } = payload ?? (source === 'feishu' ? fetchFeishuJobs() : loadFixture());
+  const loaded = payload ?? (source === 'feishu' ? fetchFeishuJobs() : loadFixture());
+  const { as_of, jobs } = loaded;
+  const writeRels = !loaded.consultant_owner || loaded.consultant_owner === consultant_id;
   const errors = [];
   const valid = [];
   const seen = new Set();
@@ -86,13 +103,23 @@ export function runSync(db, { source = 'fixture', consultant_id = 'felix', dry_r
       .run(sync_id, consultant_id, source, as_of, jobs.length, valid.length, complete,
            JSON.stringify(errors), input_hash, t0, now());
 
+    // captured_at 语义 = 「事实最后变化时间」，不是「最后同步时间」：
+    // 六个事实字段任一变化（IS NOT = null 安全不等）才前进，否则保留原值。
     const upsert = db.prepare(`INSERT INTO job_facts
       (project_id, company, role, city, pipeline, hc, active_state, source_url, captured_at, sync_id, raw_json, updated_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(project_id) DO UPDATE SET
         company=excluded.company, role=excluded.role, city=excluded.city,
         pipeline=excluded.pipeline, hc=excluded.hc, active_state=excluded.active_state,
-        source_url=excluded.source_url, captured_at=excluded.captured_at,
+        source_url=excluded.source_url,
+        captured_at=CASE WHEN
+            job_facts.company      IS NOT excluded.company      OR
+            job_facts.role         IS NOT excluded.role         OR
+            job_facts.city         IS NOT excluded.city         OR
+            job_facts.pipeline     IS NOT excluded.pipeline     OR
+            job_facts.hc           IS NOT excluded.hc           OR
+            job_facts.active_state IS NOT excluded.active_state
+          THEN excluded.captured_at ELSE job_facts.captured_at END,
         sync_id=excluded.sync_id, raw_json=excluded.raw_json, updated_at=excluded.updated_at`);
     const upsertRel = db.prepare(`INSERT INTO job_memberships
       (consultant_id, project_id, relation, source, valid_from, valid_to)
@@ -105,7 +132,7 @@ export function runSync(db, { source = 'fixture', consultant_id = 'felix', dry_r
       upsert.run(j.project_id, j.company, j.role, j.city, j.pipeline, j.hc,
                  j.active_state, j.source_url, j.captured_at || as_of, sync_id,
                  JSON.stringify(j), now());
-      if (j.relation) {
+      if (j.relation && writeRels) {
         closeRel.run(now(), consultant_id, j.project_id, j.relation); // 旧关系到期
         upsertRel.run(consultant_id, j.project_id, j.relation, source, j.captured_at || as_of);
       }
