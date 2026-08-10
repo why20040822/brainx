@@ -26,6 +26,7 @@ import { relationOf, relationMap, deriveRelation } from '../src/relations.js';
 import { pushCard } from '../src/push.js';
 import { tokenize, scoreJob } from '../src/scorer.js';
 import { isPathInside } from '../src/server.js';
+import { deriveProjectId, flatLark, flatApi, mapPriority, parseBitableRecord } from '../src/bitable.js';
 
 let db;
 before(() => { db = openDb(':memory:'); });
@@ -153,7 +154,8 @@ test('push_log：无 run_id 推送按空串哨兵去重，DB 唯一键兜底', (
 test('migrations：schema_migrations 逐文件记账，重开不重跑', () => {
   const rows = db.prepare('SELECT name FROM schema_migrations ORDER BY name').all().map((r) => r.name);
   assert.deepEqual(rows, ['0001_init.sql', '0002_push_log.sql', '0003_consultants.sql',
-                          '0004_bridge.sql', '0005_per_user.sql', '0006_framework.sql']);
+                          '0004_bridge.sql', '0005_per_user.sql', '0006_framework.sql',
+                          '0007_bitable_fields.sql']);
 });
 
 const TMPDB = join(tmpdir(), `brainx-fw-${process.pid}.db`);
@@ -170,9 +172,12 @@ test('migrations：旧库 user_version=2 兼容——前 2 个文件标记已应
   legacy.close();
   const reopened = openDb(TMPDB);
   const rows = reopened.prepare('SELECT name FROM schema_migrations ORDER BY name').all().map((r) => r.name);
-  assert.equal(rows.length, 6); // 全部记账
+  assert.equal(rows.length, 7); // 全部记账
   const view = reopened.prepare(`SELECT sql FROM sqlite_master WHERE type='view' AND name='current_engagement'`).get();
   assert.match(view.sql, /VIEWED/); // 0006 新视图已应用（含 VIEWED 推导）
+  // 0007 扩列已生效
+  const cols = reopened.prepare(`PRAGMA table_info(job_facts)`).all().map((c) => c.name);
+  for (const c of ['priority', 'notes', 'company_type']) assert.ok(cols.includes(c), `缺列 ${c}`);
   // 0006 的 push_log 回填在真实旧表上执行无报错（旧库确实有 push_log 行）
   reopened.exec(`INSERT INTO push_log (push_id, consultant_id, kind, run_id, card_json, target, status, created_at)
     VALUES ('fw-legacy', 'felix', 'SYNC_ALERT', '', '{}', 'oc_x', 'SENT', '2026-08-10')`);
@@ -190,4 +195,88 @@ test('中文分词：bigram 命中使中文职位相似度 > 0（修正前恒 0�
       watched_count: 0, accepted_count: 0, outcomes_avg: null, now: '2026-08-10T00:00:00.000Z' });
   const sim = scored.breakdown.find((d) => d.dim === 'similarity');
   assert.ok(sim.score > 0); // 「增长」bigram 命中（旧分词逐字切开又被 length>1 过滤 → 恒 0）
+});
+
+/* ── ⑪ Bitable 字段解析层（2026-08-10 实测标准字段驱动）── */
+
+test('Bitable 解析：职位多选展开为「公司×单职能」多行，project_id 与 fixture 同推导', () => {
+  const rec = { '公司': ['Rockflow'], '职位': ['产品', '工程', '运营增长'], '地点': ['北京'],
+    '还做吗': ['1重点高优'], '文本': 'B端优先', '公司类型': ['AI 2C'], '主做': null };
+  const jobs = parseBitableRecord(rec, 'recX', flatLark);
+  assert.equal(jobs.length, 3); // 修正前：1 行假职位名「产品、工程、运营增长」
+  assert.deepEqual(jobs.map((j) => j.role), ['产品', '工程', '运营增长']);
+  assert.equal(jobs[0].project_id, deriveProjectId('Rockflow', '产品')); // 单职能稳定 ID
+  assert.equal(new Set(jobs.map((j) => j.project_id)).size, 3);
+  for (const j of jobs) {
+    assert.equal(j.priority, 'HIGH');
+    assert.equal(j.notes, 'B端优先');        // 文本字段修正前 0/86 入库
+    assert.equal(j.company_type, 'AI 2C');
+    assert.equal(j.pipeline, null);          // 还做吗不再塞 pipeline
+    assert.equal(j.active_state, 'OPEN');
+    assert.equal(j.relation, null);
+  }
+});
+
+test('Bitable 解析：TTC 内部行过滤；职位空缺 → 职位待定；还做吗全值映射', () => {
+  assert.equal(parseBitableRecord({ '公司': ['TTC'], '职位': ['工程'] }, 'r1', flatLark).length, 0);
+  const j = parseBitableRecord({ '公司': ['甲'], '职位': null, '还做吗': ['新'] }, 'r2', flatLark)[0];
+  assert.equal(j.role, '职位待定');
+  assert.equal(j.priority, 'NEW');
+  assert.deepEqual(['1重点高优', '有，正常招/常年招', '无，待定', '新'].map(mapPriority),
+    ['HIGH', 'NORMAL', 'STANDBY', 'NEW']);
+  assert.equal(parseBitableRecord({ '公司': ['乙'], '还做吗': ['无，待定'] }, 'r3', flatLark)[0].active_state, 'COOLING');
+});
+
+test('Bitable 解析：API 通道富文本段无缝拼接、人员列取名', () => {
+  const rec = { '公司': [{ type: 'text', text: '像素' }, { type: 'text', text: '律动' }],
+    '职位': ['算法'], '文本': [{ type: 'text', text: 'P0：\n算法工程师' }, { type: 'text', text: '\nC 端产品' }],
+    '主做': [{ name: 'Felix 黄鑫' }] };
+  const j = parseBitableRecord(rec, 'recY', flatApi)[0];
+  assert.equal(j.company, '像素律动'); // 富文本段不能用顿号拼
+  assert.equal(j.notes, 'P0：\n算法工程师\nC 端产品');
+  assert.deepEqual(j.owner_names, ['Felix 黄鑫']); // 主做 user 列（当前实测全空，解析备用）
+});
+
+test('评分：HIGH 优先级活跃度加成 > NORMAL（修正前优先级信号全丢）', () => {
+  const ctx = { consultant_id: 'mia', profile_keywords: [], historical_texts: [],
+    watched_count: 0, accepted_count: 0, outcomes_avg: null, now: '2026-08-10T00:00:00.000Z' };
+  const mk = (priority) => ({ project_id: 'P-FW-P', company: '甲', role: '算法', pipeline: null,
+    active_state: 'OPEN', captured_at: '2026-08-10', priority });
+  const high = scoreJob(mk('HIGH'), 'TEAM_SHARED', ctx).breakdown.find((d) => d.dim === 'activity').score;
+  const normal = scoreJob(mk('NORMAL'), 'TEAM_SHARED', ctx).breakdown.find((d) => d.dim === 'activity').score;
+  assert.ok(high > normal, `HIGH(${high}) 应 > NORMAL(${normal})`);
+});
+
+/* ⑫ 0007 迁移：复合行退役 + fixture（多岗）保留 + 属主污染清理 */
+const TMPDB2 = join(tmpdir(), `brainx-fw7-${process.pid}.db`);
+after(() => { for (const s of ['', '-wal', '-shm']) rmSync(TMPDB2 + s, { force: true }); });
+
+test('0007：桥接复合行退役、fixture（多岗）保留、非属主关系到期', () => {
+  // 忠实模拟 0007 之前的库：0001-0006 已执行 + 污染数据已存在
+  const legacy = new DatabaseSync(TMPDB2);
+  const migDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrations');
+  for (const f of ['0001_init.sql', '0002_push_log.sql', '0003_consultants.sql',
+                   '0004_bridge.sql', '0005_per_user.sql', '0006_framework.sql']) {
+    legacy.exec(readFileSync(join(migDir, f), 'utf8'));
+  }
+  legacy.exec('PRAGMA user_version = 6');
+  legacy.exec(`INSERT INTO sync_runs (sync_id, consultant_id, source, as_of, input_hash, started_at)
+    VALUES ('s-bridge', 'felix', 'bridge', 't', 'h', 't'), ('s-fixture', 'felix', 'fixture', 't', 'h', 't')`);
+  const insJob = `INSERT INTO job_facts (project_id, company, role, active_state, captured_at, sync_id, raw_json, updated_at)
+    VALUES (?,?,?,'OPEN','t',?,'{}','t')`;
+  legacy.prepare(insJob).run('P-OLD-COMPOSITE', 'Rockflow', '产品、工程、运营增长', 's-bridge'); // 桥接旧复合行
+  legacy.prepare(insJob).run('P-FIX-MULTI', '像素律动', '运营增长、工程、产品、算法（多岗）', 's-fixture'); // Felix 策展行
+  legacy.prepare(`INSERT INTO job_memberships (consultant_id, project_id, relation, source, valid_from)
+    VALUES ('mia', 'P-FIX-MULTI', 'MY_JOB', 'fixture', 't'), ('felix', 'P-FIX-MULTI', 'MY_JOB', 'fixture', 't')`).run();
+  legacy.close();
+
+  const db2 = openDb(TMPDB2); // 0007 在此应用
+  assert.equal(db2.prepare(`SELECT active_state FROM job_facts WHERE project_id='P-OLD-COMPOSITE'`).get().active_state,
+    'CLOSED'); // 桥接复合行退役（新解析按单职能重建）
+  assert.equal(db2.prepare(`SELECT active_state FROM job_facts WHERE project_id='P-FIX-MULTI'`).get().active_state,
+    'OPEN'); // fixture（多岗）策展资产保留
+  assert.ok(db2.prepare(`SELECT valid_to FROM job_memberships WHERE consultant_id='mia'`).get().valid_to); // 污染到期
+  assert.equal(db2.prepare(`SELECT valid_to FROM job_memberships WHERE consultant_id='felix'`).get().valid_to,
+    null); // 属主本人不动
+  db2.close();
 });

@@ -31,8 +31,9 @@ export function buildDailyCard({ consultant_name, run, items, commitments, sync,
   const medals = ['1️⃣', '2️⃣', '3️⃣'];
   items.slice(0, 3).forEach((r, i) => {
     const j = r.job;
+    const hot = j.priority === 'HIGH' ? '🔥 ' : ''; // 重点高优（还做吗结构化，0007 起）
     els.push({ tag: 'markdown', content:
-      `**${medals[i]} ${j.role}**\n${j.company}${j.city ? ' · ' + j.city : ''} · ${REL_LABEL[j.relation] || j.relation}\n`
+      `**${medals[i]} ${hot}${j.role}**\n${j.company}${j.city ? ' · ' + j.city : ''} · ${REL_LABEL[j.relation] || j.relation}\n`
       + `\`Fit ${dim(r, 'direction')}  Activity ${dim(r, 'activity')}  Evidence ${Math.round(r.evidence_coverage * 100)}\`\n`
       + `综合 **${r.score}** 分 · 置信${{ HIGH: '高', MEDIUM: '中', LOW: '低' }[r.confidence_band]} · ${ACTION_LABEL[r.action]}\n`
       + `理由：${r.reasons[1] || r.reasons[0]}\n⚠️ 风险：${r.risks[0] || '—'}` });

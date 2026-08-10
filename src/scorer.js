@@ -6,6 +6,7 @@
  * - 排序链固定：score↓ → coverage↓ → 新鲜度↓ → project_id↑。
  */
 import { createHash } from 'node:crypto';
+import { PRIORITY_LABEL } from './bitable.js';
 
 export const WEIGHTS = {
   direction: 0.25,   // 职位方向匹配
@@ -79,11 +80,14 @@ export function scoreJob(job, relation, ctx) {
   // 方向匹配 25%：画像关键词 + 历史项目关键词
   dims.direction = kwOverlap(text, ctx.profile_keywords);
 
-  // 活跃度 20%：状态 + pipeline 有内容 + 新鲜度
+  // 活跃度 20%：状态 + 优先级/pipeline + 新鲜度
+  // 盘点源（Bitable）有结构化 priority（0007 起）；fixture 行用 pipeline 有无近似
+  const PRIORITY_BOOST = { HIGH: 25, NEW: 15, NORMAL: 10, STANDBY: 0 };
   let act = null;
   if (job.active_state === 'OPEN') {
     act = 50;
-    if (job.pipeline) act += 25;
+    if (job.priority != null) act += PRIORITY_BOOST[job.priority] ?? 0;
+    else if (job.pipeline) act += 25;
     const d = daysSince(job.captured_at, ctx.now);
     act += d <= 1 ? 25 : d <= 7 ? 18 : d <= 30 ? 8 : 0;
   }
@@ -147,7 +151,7 @@ export function explain(job, relation, scored, ctx) {
   const relLabel = { MY_JOB: '我的职位', PRIMARY_PM: '我是主 PM', TEAM_SHARED: '团队共享', OTHER_CONSULTANT: '其他顾问主做' }[relation] || relation;
   reasons.push(`关系：${relLabel}${job.pipeline ? `；${job.pipeline}` : ''}`);
   if (b.direction != null) reasons.push(`方向匹配 ${b.direction} 分：与你画像关键词（${ctx.profile_keywords.slice(0, 3).join('/')}等）的重合度`);
-  if (b.activity != null) reasons.push(`活跃度 ${b.activity} 分：状态 ${job.active_state}${job.pipeline ? '，Pipeline 有进展记录' : ''}，最近同步 ${String(job.captured_at).slice(0, 10)}`);
+  if (b.activity != null) reasons.push(`活跃度 ${b.activity} 分：状态 ${job.active_state}${job.priority ? `，优先级${PRIORITY_LABEL[job.priority] || job.priority}` : job.pipeline ? '，Pipeline 有进展记录' : ''}，最近变化 ${String(job.captured_at).slice(0, 10)}`);
   if (b.similarity != null && b.similarity > 0) reasons.push(`历史相似 ${b.similarity} 分：与你历史主做项目存在重合特征`);
   const risks = [];
   if ((ctx.watched_count || 0) >= 7) risks.push(`关注榜已 ${ctx.watched_count}/10，接近上限`);

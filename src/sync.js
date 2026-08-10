@@ -20,6 +20,7 @@ import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { now, uuid } from './db.js';
+import { BITABLE_BASE, BITABLE_TABLE, flatLark, parseBitableRecord } from './bitable.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -32,28 +33,20 @@ export function loadFixture() {
 }
 
 /** lark-cli 读职位盘点 Bitable（L2 飞书源实测通道）。
- * relation=null：本函数只喂事实，关系一律交给 fixture 策展 + relations.js 推导，
- * 防止 TEAM_SHARED 把同步者既有策展关系冲掉（与 bridge.js 头部纪律一致）。 */
+ * 解析层 = src/bitable.js（与 bridge 同一权威）：公司×单职能展开、priority 结构化、
+ * relation=null（事实/关系分离——防止 TEAM_SHARED 把同步者既有策展关系冲掉）。 */
 export function fetchFeishuJobs() {
   const out = execFileSync('lark-cli', [
-    'base', '+record-list', '--base-token', 'RR5NbWHEfacz4jsRYMocy1qAnSh',
-    '--table-id', 'tblsZBwtKIrIgtre', '--page-size', '100', '--format', 'json',
+    'base', '+record-list', '--base-token', BITABLE_BASE,
+    '--table-id', BITABLE_TABLE, '--page-size', '100', '--format', 'json',
   ], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
   const d = JSON.parse(out.slice(out.indexOf('{'))).data;
-  const flat = (v) => (Array.isArray(v) ? v.filter(Boolean).join('、') : (v ?? ''));
   return {
     as_of: now(),
-    jobs: d.data.map((cells, i) => {
+    jobs: d.data.flatMap((cells, i) => {
       const rec = Object.fromEntries(d.fields.map((c, j) => [c, cells[j]]));
-      return {
-        project_id: '', // 飞书源无 project_id（实证）→ 硬约束进 errors
-        company: flat(rec['公司']), role: flat(rec['职位']) || '职位待定',
-        city: flat(rec['地点']) || null, pipeline: flat(rec['还做吗']) || null,
-        active_state: /无|待定/.test(flat(rec['还做吗'])) ? 'COOLING' : 'OPEN',
-        relation: null, relation_note: flat(rec['主做']) || null, // 事实/关系分离（见头注）
-        source_url: `feishu://base/RR5NbWHEfacz4jsRYMocy1qAnSh?record=${d.record_id_list[i]}`,
-      };
-    }).filter((j) => j.company && j.company !== 'TTC'),
+      return parseBitableRecord(rec, d.record_id_list[i], flatLark);
+    }),
   };
 }
 
@@ -104,13 +97,14 @@ export function runSync(db, { source = 'fixture', consultant_id = 'felix', dry_r
            JSON.stringify(errors), input_hash, t0, now());
 
     // captured_at 语义 = 「事实最后变化时间」，不是「最后同步时间」：
-    // 六个事实字段任一变化（IS NOT = null 安全不等）才前进，否则保留原值。
+    // 九个事实字段任一变化（IS NOT = null 安全不等）才前进，否则保留原值。
     const upsert = db.prepare(`INSERT INTO job_facts
-      (project_id, company, role, city, pipeline, hc, active_state, source_url, captured_at, sync_id, raw_json, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      (project_id, company, role, city, pipeline, hc, active_state, priority, notes, company_type, source_url, captured_at, sync_id, raw_json, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(project_id) DO UPDATE SET
         company=excluded.company, role=excluded.role, city=excluded.city,
         pipeline=excluded.pipeline, hc=excluded.hc, active_state=excluded.active_state,
+        priority=excluded.priority, notes=excluded.notes, company_type=excluded.company_type,
         source_url=excluded.source_url,
         captured_at=CASE WHEN
             job_facts.company      IS NOT excluded.company      OR
@@ -118,7 +112,10 @@ export function runSync(db, { source = 'fixture', consultant_id = 'felix', dry_r
             job_facts.city         IS NOT excluded.city         OR
             job_facts.pipeline     IS NOT excluded.pipeline     OR
             job_facts.hc           IS NOT excluded.hc           OR
-            job_facts.active_state IS NOT excluded.active_state
+            job_facts.active_state IS NOT excluded.active_state OR
+            job_facts.priority     IS NOT excluded.priority     OR
+            job_facts.notes        IS NOT excluded.notes        OR
+            job_facts.company_type IS NOT excluded.company_type
           THEN excluded.captured_at ELSE job_facts.captured_at END,
         sync_id=excluded.sync_id, raw_json=excluded.raw_json, updated_at=excluded.updated_at`);
     const upsertRel = db.prepare(`INSERT INTO job_memberships
@@ -130,7 +127,8 @@ export function runSync(db, { source = 'fixture', consultant_id = 'felix', dry_r
 
     for (const j of valid) {
       upsert.run(j.project_id, j.company, j.role, j.city, j.pipeline, j.hc,
-                 j.active_state, j.source_url, j.captured_at || as_of, sync_id,
+                 j.active_state, j.priority ?? null, j.notes ?? null, j.company_type ?? null,
+                 j.source_url, j.captured_at || as_of, sync_id,
                  JSON.stringify(j), now());
       if (j.relation && writeRels) {
         closeRel.run(now(), consultant_id, j.project_id, j.relation); // 旧关系到期

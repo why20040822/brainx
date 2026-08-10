@@ -138,3 +138,15 @@ sh bin/install-launchd.sh               # 幂等；卸载见脚本头注释
 **评分质量**：similarity 旧分词 `(?=[一-鿿])` 把中文逐字切开又被 length>1 过滤 → 纯中文职位相似度恒 0；改 CJK bigram（tokenize 导出），「增长负责人」×「增长经理」命中「增长」。
 
 **验证**：64/64 测试绿（51 旧 + 13 新）；真实库副本实测迁移：user_version 5→6，0006 单文件补跑，视图含 VIEWED，push_log 存量 NULL 全部回填为 ''，recommendations 150 行 / events 169 行无损。
+
+## 15. Bitable 标准字段适配（2026-08-10，字段解析逻辑修正）
+
+**起因**：用户指出字段解析逻辑有问题，要求按云端标准字段实测重构。实测（field-list + 31 记录全扫）：「职位」是多选**职能类别**非职位名；「还做吗」是**优先级+状态**（1重点高优12/正常招11/无,待定4/新4）；「文本」是真实需求细节；「主做」user 列 31/31 全空。
+
+**旧解析缺陷（实锤）**：① 职位多选被顿号拼成假职位名（22/86 行）且勾选变化致 project_id 漂移重复；② 文本 0/86 入库；③ 还做吗原文塞 pipeline，优先级信号全丢；④ 主做/公司类型丢弃。
+
+**修正**：新增 `src/bitable.js` 解析层（唯一权威，bridge/sync 共用）——公司×单职能展开（project_id 仍 md5(公司|职能)，单职能行 ID 无缝续命，与 fixture 同源自然合并）；priority 结构化（HIGH/NEW/NORMAL/STANDBY，STANDBY→COOLING）；notes/company_type 入库（0007 扩列）；owner_names 解析入 raw_json 备用。captured_at 变化检测扩为 9 字段。scorer 活跃度加 priority 加成（HIGH+25/NEW+15/NORMAL+10）；卡片 🔥 高优；抽屉展示优先级+需求细节。
+
+**0007 迁移**：扩三列；桥接旧复合行 CLOSED（12 行，fixture（多岗）策展行 23 行保留）；非属主 fixture 关系到期（云端 mia 60 条污染实锤，一并清理）。
+
+**验证**：69/69 测试绿；真 lark-cli 干跑 31→51 行（像素律动 4 职能带 P0 文本）；真实库副本全演练（86→119 行，退役/清理/回填全对）。方案与数据管理纪律见 docs/2026-08-10-bitable-standard-fields-and-cloud-isolation.md。

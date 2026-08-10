@@ -123,7 +123,9 @@ export const publicRec = (r) => ({
   job: {
     project_id: r.job.project_id, company: r.job.company, role: r.job.role,
     city: r.job.city, pipeline: r.job.pipeline, hc: r.job.hc,
-    active_state: r.job.active_state, relation: r.relation, source_url: r.job.source_url,
+    active_state: r.job.active_state, priority: r.job.priority ?? null,
+    notes: r.job.notes ?? null, company_type: r.job.company_type ?? null,
+    relation: r.relation, source_url: r.job.source_url,
     captured_at: r.job.captured_at,
   },
 });

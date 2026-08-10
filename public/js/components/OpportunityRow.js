@@ -41,7 +41,7 @@ export function OpportunityRow({ rec, expanded, onOpen, onAction }) {
     <span class="rel-tag ${j.relation}"></span>
     <span class="opp-action-tag ${rec.action}"></span>
     <span class="opp-score"></span>`;
-  head.querySelector('.opp-role').textContent = j.role;
+  head.querySelector('.opp-role').textContent = j.priority === 'HIGH' ? `🔥 ${j.role}` : j.role;
   head.querySelector('.opp-meta').textContent = `${j.company}${j.city ? ' · ' + j.city : ''}`;
   head.querySelector('.rel-tag').textContent = REL_LABEL[j.relation] || j.relation;
   head.querySelector('.opp-action-tag').textContent = ACTION_LABEL[rec.action] || rec.action;

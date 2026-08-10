@@ -32,3 +32,4 @@ export const DIM_LABEL = { direction: 'Fit', activity: 'Activity', similarity: '
   capacity: '承接容量', outcomes: '历史结果', exploration: '探索' };
 export const STATE_LABEL = { NEW: '新', RECOMMENDED: '已推荐', VIEWED: '已查看', WATCHED: '关注中',
   ACCEPTED: '已接单', DISMISSED: '暂不考虑', RELEASED: '已释放', EXPIRED: '已过期', COMPLETED: '已完成' };
+export const PRIORITY_LABEL = { HIGH: '🔥 重点高优', NEW: '新增', NORMAL: '正常招', STANDBY: '待定冷却' };

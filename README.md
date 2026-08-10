@@ -5,21 +5,22 @@
 
 - **技术栈**：Node ≥22（`node:sqlite` + `node:http`）+ 原生 ES-module 前端，**零 npm 依赖、零框架、零构建**
 - **云版**：http://47.110.93.137:3100（systemd 常驻）· **本地版**：launchd 常驻 http://127.0.0.1:3100
-- 规模：~4400 行（src ~2000 + tests ~1300 + public 1032），21 个提交，64/64 测试绿
+- 规模：~4600 行（src ~2150 + tests ~1500 + public ~1050），22 个提交，69/69 测试绿
 
 ## 目录与文件（全部内容）
 
 ```
-src/                  后端核心（17 文件，~2000 行）
+src/                  后端核心（18 文件，~2150 行）
   server.js           HTTP 路由 + SSE 总线（定向投递）+ 静态文件（isPathInside 防穿越）；入口 main
   bridge.js           飞书桥接器：3 分钟一轮；Bitable 团队池 + 按人令牌读各自所在群
+  bitable.js          Bitable 字段解析层（唯一权威）：公司×单职能展开、priority 结构化、双通道拍平
   relations.js        关系推导单一权威：本人行 > 他人主做→OTHER_CONSULTANT > 团队池 TEAM_SHARED
   feishu.js           令牌 AES-256-GCM 存取 + refresh 轮换 + 直连 OpenAPI（45s 超时）
   oauth.js            网页授权 code flow；显式申请白名单 9 项 scope（含 offline_access）
   session.js          HMAC 无状态 Cookie（密钥 data/.secret，0600）
-  sync.js             同步批次 + job_facts UPSERT（事实变化才前进 captured_at）+ fixture 属主守卫
+  sync.js             同步批次 + job_facts UPSERT（9 事实字段变化才前进 captured_at）+ 属主守卫
   recommend.js        生成一轮推荐（快照闸门；接 relations 推导；latestRun 剥离 raw_json）
-  scorer.js           六维确定性评分（CJK bigram 分词；UNKNOWN 关系硬阻断）
+  scorer.js           六维确定性评分（CJK bigram 分词；priority 活跃度加成；UNKNOWN 硬阻断）
   engagement.js       承接状态机（VIEW 不降级关注；ACCEPT 拦他人主做；事件账本推导）
   replay.js           冻结回放：只读 recommendations 冻结行，不重算
   autopush.js         重大变化检测（Top1 易主 / Top3 新 ACCEPT 档）→ 推卡钩子
@@ -28,7 +29,8 @@ src/                  后端核心（17 文件，~2000 行）
   visibility.js       可见性单一权威（server.js 与 mcp 共用，fail-closed）
   db.js               node:sqlite 打开 + migrations 按文件名记账（schema_migrations 表）
   env.js              .env 加载
-migrations/           6 个迁移：init / push_log / consultants / bridge / per_user / framework（视图重建+回填）
+migrations/           7 个迁移：init / push_log / consultants / bridge / per_user / framework
+                      / bitable_fields（扩列+退役+污染清理）
 public/               前端（12 文件，1032 行，无构建 ES-module）
   index.html login.html styles.css
   js/main.js          页面编排 + SSE 客户端（1s 去抖刷新）
@@ -40,9 +42,10 @@ bin/                  CLI：sync/recommend/replay/roster/push/web + install-laun
                       + com.brainx.web.plist（macOS）+ brainx.service（systemd，含 HOME 修复）
 fixtures/             60 职位种子（3 份真实飞书导出衍生）+ roster.json（3 顾问）+ _sources/
 scripts/build_fixture.mjs   fixture 重建
-tests/                8 个测试文件 64 例：core(18) bridge(8) feishu(7) visibility(6)
-                      autopush(5) oauth(5) mcp(2) framework(13)
-docs/VERIFICATION.md  13 节真机验证记录（每次大改的实测证据）
+tests/                8 个测试文件 69 例：core(18) bridge(8) feishu(7) visibility(6)
+                      autopush(5) oauth(5) mcp(2) framework(18)
+docs/VERIFICATION.md  15 节真机验证记录（每次大改的实测证据）
+docs/2026-08-10-bitable-standard-fields-and-cloud-isolation.md  字段标准/数据管理/云端隔离方案
 QUICKSTART.md         开箱即用（云版/本地/打包纪律）
 ```
 
@@ -73,7 +76,7 @@ QUICKSTART.md         开箱即用（云版/本地/打包纪律）
 ## 运行
 
 ```bash
-npm test                     # 64/64，约 3 秒（Node ≥22；v22 用 node --test "tests/*.test.mjs"）
+npm test                     # 69/69，约 3 秒（Node ≥22；v22 用 node --test "tests/*.test.mjs"）
 node src/server.js           # 开发：127.0.0.1:3000
 sh bin/install-launchd.sh    # macOS 常驻 → 127.0.0.1:3100
 # 服务器部署：rsync（include/exclude 规则，勿多源带尾斜杠！）→ systemctl restart brainx
