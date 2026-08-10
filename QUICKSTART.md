@@ -4,7 +4,8 @@
 
 **http://47.110.93.137:3100** — 浏览器打开 → 飞书授权 → 自己的工作台。
 mia / felix / york 在花名册内（fail-closed：不在册一律拒登）。
-服务器：阿里云 47.110.93.137 `/opt/brainx`，systemd `brainx.service` 常驻。
+服务器：阿里云 47.110.93.137 `/opt/brainx`，systemd `brainx.service` 常驻
+（unit 见 `bin/brainx.service`；桥接已开，3 分钟一轮拉飞书 Bitable + 三个群）。
 以下本地玩法仅在需要离线演示/二开时用。
 
 ## 1. 解包启动（30 秒）

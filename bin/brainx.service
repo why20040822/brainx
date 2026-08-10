@@ -1,0 +1,21 @@
+[Unit]
+Description=Brain X 职位决策工作台
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/brainx
+ExecStart=/usr/bin/node /opt/brainx/src/server.js
+# HOME 必须显式给：systemd 不会为 root 服务设置 HOME，缺了它 lark-cli
+# 找不到 ~/.lark-cli 会报 not_configured，桥接每轮静默失败
+Environment=HOME=/root
+Environment=BRAINX_PORT=3100
+Environment=BRAINX_HOST=0.0.0.0
+Environment=BRAINX_BASE_URL=http://47.110.93.137:3100
+Environment=BRAINX_BRIDGE_INTERVAL_MS=180000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
