@@ -262,6 +262,7 @@ export async function bridgeOnce(db, { consultant_ids, execImpl = lark, api = { 
 export function startBridge(db, bus, { intervalMs, recommendFn, consultantIdsFn, onRecommended } = {}) {
   const iv = intervalMs ?? Number(process.env.BRAINX_BRIDGE_INTERVAL_MS || 180000);
   let running = false;
+  let prevSkipped = new Set(); // 只在「新进入无令牌状态」时提醒一次，避免每轮刷屏
   const tick = () => {
     if (running) return;
     running = true;
@@ -286,10 +287,13 @@ export function startBridge(db, bus, { intervalMs, recommendFn, consultantIdsFn,
         if (out.syncs.length === 0) {
           bus?.emit({ type: 'sync_error', message: '职位盘点拉取失败（API 与 lark-cli 均不可用）', at: now() });
         }
+        const curSkipped = new Set(out.skipped);
         for (const cid of out.skipped) {
+          if (prevSkipped.has(cid)) continue; // 已提醒过，等重登后自然恢复
           bus?.emit({ type: 'sync_error', consultant_id: cid,
                       message: '飞书授权待更新，重新登录后恢复实时同步', at: now() });
         }
+        prevSkipped = curSkipped;
       } catch (e) {
         // 未预期异常：广播错误态，下一轮继续
         bus?.emit({ type: 'sync_error', message: String(e.message || e).slice(0, 200), at: now() });
