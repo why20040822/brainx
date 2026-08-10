@@ -14,6 +14,7 @@ import { recommend, latestRun, loadConsultants } from '../src/recommend.js';
 import { engage, commitmentSummary, currentState, legalActions, DISMISS_REASONS } from '../src/engagement.js';
 import { replay, recordOutcome } from '../src/replay.js';
 import { buildDailyCard, buildSyncAlertCard } from '../src/push.js';
+import { jobVisibleTo } from '../src/visibility.js';
 
 const db = openDb();
 
@@ -70,16 +71,17 @@ const TOOLS = {
       consultant_id: { type: 'string' }, project_id: { type: 'string' } } },
     run: ({ consultant_id: cid, project_id: pid }) => {
       const job = db.prepare('SELECT * FROM job_facts WHERE project_id=?').get(pid);
-      if (!job) return { error: 'NOT_FOUND', project_id: pid };
+      // 与 HTTP 同一可见性规则（visibility.js 单一权威）：无关系 = NOT_FOUND
+      if (!job || !jobVisibleTo(db, cid, pid)) return { error: 'NOT_FOUND', project_id: pid };
       const rel = db.prepare(`SELECT relation, source, valid_from FROM job_memberships
         WHERE project_id=? AND consultant_id=? AND valid_to IS NULL`).get(pid, cid);
       const eng = currentState(db, cid, pid);
       const events = db.prepare(`SELECT event_type, occurred_at, actor, reason FROM decision_events
-        WHERE project_id=? ORDER BY occurred_at, id`).all(pid);
+        WHERE project_id=? AND actor=? ORDER BY occurred_at, id`).all(pid, cid);
       const rec = db.prepare(`SELECT * FROM recommendations WHERE project_id=? AND consultant_id=?
         ORDER BY created_at DESC LIMIT 1`).get(pid, cid);
       const outs = db.prepare(`SELECT stage, value_json, observed_at FROM job_outcomes
-        WHERE project_id=? ORDER BY observed_at`).all(pid);
+        WHERE project_id=? AND consultant_id=? ORDER BY observed_at`).all(pid, cid);
       return {
         job: { ...job, raw_json: undefined }, relation: rel?.relation || 'UNKNOWN',
         engagement_state: eng.state, legal_actions: legalActions(db, cid, pid),
@@ -104,8 +106,14 @@ const TOOLS = {
   brainx_replay: {
     description: '决策回放：冻结推荐 + 当轮 run + 事件 + 结果（job_now 仅对照）',
     inputSchema: { type: 'object', required: ['decision_id'], properties: {
-      decision_id: { type: 'string' } } },
-    run: ({ decision_id }) => replay(db, decision_id) || { error: 'NOT_FOUND', decision_id },
+      decision_id: { type: 'string' }, consultant_id: { type: 'string' } } },
+    run: ({ decision_id, consultant_id: cid }) => {
+      // 与 HTTP 一致：只能回放自己名下的推荐（consultant_id 缺失时按声明身份兜底）
+      const owner = db.prepare('SELECT consultant_id FROM recommendations WHERE decision_id=?').get(decision_id);
+      if (!owner) return { error: 'NOT_FOUND', decision_id };
+      if (cid && owner.consultant_id !== cid) return { error: 'NOT_FOUND', decision_id };
+      return replay(db, decision_id);
+    },
   },
   brainx_record_outcome: {
     description: '录入结果观察（幂等；重复 idempotency_key 返回 already）',

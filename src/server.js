@@ -17,6 +17,8 @@ import { signState, verifyState, buildAuthorizeUrl, exchangeCode, oauthConfigure
 import { findByOpenId } from './roster.js';
 import { startBridge } from './bridge.js';
 import { makeAutoPush } from './autopush.js';
+import { saveUserTokens, tokenStatus } from './feishu.js';
+import { jobVisibleTo } from './visibility.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
@@ -45,12 +47,13 @@ export function createServer(db = openDb(), deps = {}) {
     return s?.consultant_id || null;
   };
 
-  // SSE 广播总线：桥接器/动作 → 所有打开的工作台页面
-  const sseClients = new Set();
+  // SSE 广播总线：res → consultant_id；事件带 consultant_id 时只发给本人（定向隔离）
+  const sseClients = new Map();
   const bus = {
     emit(obj) {
       const frame = `data: ${JSON.stringify(obj)}\n\n`;
-      for (const res of [...sseClients]) {
+      for (const [res, ccid] of [...sseClients]) {
+        if (obj.consultant_id && obj.consultant_id !== ccid) continue;
         try { res.write(frame); } catch { sseClients.delete(res); }
       }
     },
@@ -84,6 +87,10 @@ export function createServer(db = openDb(), deps = {}) {
       catch (e) { return fail('exchange_failed'); }
       const consultant = findByOpenId(db, identity.open_id);
       if (!consultant) return fail('not_in_roster'); // fail-closed：不在花名册 = 不是顾问
+      // 按人桥接的凭据：把这次授权拿到的用户令牌对加密入库（失败不阻断登录，
+      // 只是该顾问暂不能按人拉消息，下轮 sync_error 提醒重登）
+      try { saveUserTokens(db, consultant.consultant_id, identity.open_id, identity.tokens); }
+      catch (e) { console.error(`[oauth] 令牌入库失败 cid=${consultant.consultant_id}：${String(e.message).slice(0, 80)}`); }
       res.writeHead(302, {
         Location: '/',
         'Set-Cookie': `brainx_session=${encodeURIComponent(signSession(consultant.consultant_id, identity.open_id))}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800`,
@@ -113,6 +120,7 @@ export function createServer(db = openDb(), deps = {}) {
         sync: sync ? { state: sync.complete ? 'READY' : 'INCOMPLETE', updated_at: sync.completed_at,
                        rows_read: sync.rows_read, rows_expected: sync.rows_expected,
                        errors: JSON.parse(sync.errors || '[]') } : { state: 'EMPTY', updated_at: null },
+        feishu_auth: tokenStatus(db, cid), // {authorized, needs_reauth}——头胶囊提示重登
         current_policy_version: run?.run?.policy_version || null,
         watched_count: c.watched_count, watched_limit: c.watched_limit,
         accepted_count: c.accepted_count, cooldown_count: 0,
@@ -150,23 +158,24 @@ export function createServer(db = openDb(), deps = {}) {
     },
 
     'GET /api/v1/sync-runs/:id': (req, res, cid, q, id) => {
-      const r = db.prepare('SELECT * FROM sync_runs WHERE sync_id=?').get(id);
+      const r = db.prepare('SELECT * FROM sync_runs WHERE sync_id=? AND consultant_id=?').get(id, cid);
       if (!r) return err(res, 404, 'NOT_FOUND', '同步批次不存在');
       json(res, 200, { ...r, errors: JSON.parse(r.errors || '[]') });
     },
 
     'GET /api/v1/opportunities/:id': (req, res, cid, q, id) => {
       const job = db.prepare('SELECT * FROM job_facts WHERE project_id=?').get(id);
-      if (!job) return err(res, 404, 'NOT_FOUND', '职位不存在');
+      // fail-closed：与自己无任何关系的职位一律 404（不泄露存在性），事实明细不出库
+      if (!job || !jobVisibleTo(db, cid, id)) return err(res, 404, 'NOT_FOUND', '职位不存在');
       const rel = db.prepare(`SELECT relation, source, valid_from FROM job_memberships
         WHERE project_id=? AND consultant_id=? AND valid_to IS NULL`).get(id, cid);
       const eng = currentState(db, cid, id);
       const events = db.prepare(`SELECT event_type, occurred_at, actor, reason FROM decision_events
-        WHERE project_id=? ORDER BY occurred_at, id`).all(id);
+        WHERE project_id=? AND actor=? ORDER BY occurred_at, id`).all(id, cid);
       const rec = db.prepare(`SELECT * FROM recommendations WHERE project_id=? AND consultant_id=?
         ORDER BY created_at DESC LIMIT 1`).get(id, cid);
       const outs = db.prepare(`SELECT stage, value_json, observed_at FROM job_outcomes
-        WHERE project_id=? ORDER BY observed_at`).all(id);
+        WHERE project_id=? AND consultant_id=? ORDER BY observed_at`).all(id, cid);
       json(res, 200, {
         job: { ...job, raw_json: undefined, relation: rel?.relation || 'UNKNOWN' },
         relation: rel || { relation: 'UNKNOWN' },
@@ -189,6 +198,9 @@ export function createServer(db = openDb(), deps = {}) {
     },
 
     'GET /api/v1/decisions/:id/replay': (req, res, cid, q, id) => {
+      // 回放只能看自己名下的推荐（冻结行含评分理由，跨人泄露 = 泄露他人决策上下文）
+      const owner = db.prepare('SELECT consultant_id FROM recommendations WHERE decision_id=?').get(id);
+      if (!owner || owner.consultant_id !== cid) return err(res, 404, 'NOT_FOUND', '决策不存在');
       const r = replay(db, id);
       if (!r) return err(res, 404, 'NOT_FOUND', '决策不存在');
       json(res, 200, r);
@@ -209,7 +221,7 @@ export function createServer(db = openDb(), deps = {}) {
                            'Cache-Control': 'no-cache', Connection: 'keep-alive' });
       res.write(`data: ${JSON.stringify({ type: 'hello', consultant_id: cid,
         at: new Date().toISOString() })}\n\n`);
-      sseClients.add(res);
+      sseClients.set(res, cid);
       const hb = setInterval(() => { try { res.write(': hb\n\n'); } catch { /* closed */ } }, 25000);
       req.on('close', () => { clearInterval(hb); sseClients.delete(res); });
     },

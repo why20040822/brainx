@@ -15,6 +15,22 @@ export const FEISHU_APP_ID = process.env.BRAINX_FEISHU_APP_ID || 'cli_aac5c592fe
 const APP_SECRET = () => process.env.BRAINX_FEISHU_APP_SECRET || '';
 const BASE = () => process.env.BRAINX_BASE_URL || 'http://127.0.0.1:3000';
 
+// 网页授权只申请租户白名单内的最小集（2026-08-10 实证：--recommend 全量包被管理员
+// 驳回，这 9 项在 Mia 2026-07-09 授权里已存在=必然白名单内）。不传 scope 会默认申请
+// 应用全部已启用 scope，其中含非白名单项 → felix/york 授权页直接失败。
+// offline_access 必须显式要：没有它飞书不发 refresh_token，按人桥接无从谈起。
+export const OAUTH_SCOPES = process.env.BRAINX_FEISHU_SCOPES || [
+  'offline_access',
+  'auth:user.id:read',
+  'contact:user.base:readonly',
+  'im:message:readonly',
+  'im:chat:read',
+  'im:chat.members:read',
+  'base:app:read',
+  'base:table:read',
+  'base:record:read',
+].join(' ');
+
 export const oauthConfigured = () => Boolean(APP_SECRET());
 export const redirectUri = () => `${BASE()}/api/v1/oauth/callback`;
 
@@ -38,21 +54,32 @@ export function buildAuthorizeUrl(state) {
   u.searchParams.set('app_id', FEISHU_APP_ID);
   u.searchParams.set('redirect_uri', redirectUri());
   u.searchParams.set('state', state);
+  u.searchParams.set('scope', OAUTH_SCOPES);
   return u.toString();
 }
 
-/** code → 飞书身份。fetchImpl 可注入（测试用）。 */
-export async function exchangeCode(code, fetchImpl = fetch) {
-  const r1 = await fetchImpl('https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal', {
+/** app_id+secret → app_access_token（refresh 流程也要用它做 Bearer）。 */
+export async function appAccessToken(fetchImpl = fetch) {
+  const r = await fetchImpl('https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ app_id: FEISHU_APP_ID, app_secret: APP_SECRET() }),
+    signal: AbortSignal.timeout(45000),
   });
-  const d1 = await r1.json();
-  if (d1.code !== 0) throw new Error(`app_access_token 失败: ${d1.msg || d1.code}`);
+  const d = await r.json();
+  if (d.code !== 0) throw new Error(`app_access_token 失败: ${d.msg || d.code}`);
+  return d.app_access_token;
+}
+
+/** code → 飞书身份 + 用户令牌对。fetchImpl 可注入（测试用）。
+ * 返回 { open_id, name, en_name, avatar, tokens }；tokens 含 refresh_token 时
+ * 调用方应 saveUserTokens 入库（按人桥接的凭据）。 */
+export async function exchangeCode(code, fetchImpl = fetch) {
+  const appToken = await appAccessToken(fetchImpl);
   const r2 = await fetchImpl('https://open.feishu.cn/open-apis/authen/v1/oidc/access_token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${d1.app_access_token}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${appToken}` },
     body: JSON.stringify({ grant_type: 'authorization_code', code }),
+    signal: AbortSignal.timeout(45000),
   });
   const d2 = await r2.json();
   if (d2.code !== 0) throw new Error(`oidc/access_token 失败: ${d2.msg || d2.code}`);
@@ -65,7 +92,14 @@ export async function exchangeCode(code, fetchImpl = fetch) {
   const d3 = await r3.json();
   if (d3.code !== 0) throw new Error(`user_info 失败: ${d3.msg || d3.code}`);
   const u = d3.data || {};
-  // 排障日志：只打 open_id 前 10 位，绝不打完整身份信息
+  // 排障日志：只打 open_id 前 10 位，绝不打完整身份信息/令牌
   console.error(`[oauth] user_info open_id 前缀: ${String(u.open_id || 'MISSING').slice(0, 10)}`);
-  return { open_id: u.open_id, name: u.name, en_name: u.en_name, avatar: u.avatar_url };
+  const t = d2.data || {};
+  return {
+    open_id: u.open_id, name: u.name, en_name: u.en_name, avatar: u.avatar_url,
+    tokens: {
+      access_token: t.access_token, refresh_token: t.refresh_token,
+      expires_in: t.expires_in, refresh_expires_in: t.refresh_expires_in, scope: t.scope,
+    },
+  };
 }

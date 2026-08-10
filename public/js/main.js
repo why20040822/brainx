@@ -26,7 +26,8 @@ async function refresh() {
 }
 
 function renderAll() {
-  renderHeader($('wb-header'), { consultant_id: model.consultant_id, sync: model.sync }, {
+  renderHeader($('wb-header'), { consultant_id: model.consultant_id, sync: model.sync,
+    feishu_auth: model.feishu_auth }, {
     onSync: doSync, onLogout: doLogout,
   });
   renderQueue({

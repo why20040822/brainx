@@ -48,6 +48,8 @@ code { font-family: var(--mono); font-size: 0.9em; }
 .sync-dot.RUNNING { background: var(--link); }
 .sync-dot.INCOMPLETE, .sync-dot.ERROR, .sync-dot.AUTH_EXPIRED { background: var(--signal); }
 .sync-dot.EMPTY { background: var(--caution); }
+.sync-pill.auth-warn { color: var(--signal); border-color: var(--signal); text-decoration: none; cursor: pointer; }
+.sync-pill.auth-warn:hover { background: var(--signal); color: var(--paper); }
 
 /* ── 区块标题 ── */
 .section-title { font-size: 17px; margin: 28px 0 4px; }
