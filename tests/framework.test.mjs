@@ -23,6 +23,7 @@ import { runSync, loadFixture } from '../src/sync.js';
 import { recommend, latestRun } from '../src/recommend.js';
 import { engage, currentState } from '../src/engagement.js';
 import { relationOf, relationMap, deriveRelation } from '../src/relations.js';
+import { updateProfile, seedRoster, listConsultants } from '../src/roster.js';
 import { pushCard } from '../src/push.js';
 import { tokenize, scoreJob } from '../src/scorer.js';
 import { isPathInside } from '../src/server.js';
@@ -279,4 +280,38 @@ test('0007：桥接复合行退役、fixture（多岗）保留、非属主关系
   assert.equal(db2.prepare(`SELECT valid_to FROM job_memberships WHERE consultant_id='felix'`).get().valid_to,
     null); // 属主本人不动
   db2.close();
+});
+
+/* ⑬ 档案系统：自维护 + 种子不冲自维护档案 + direction 链路生效 */
+test('档案：updateProfile 校验与持久化；非法输入 422/404', () => {
+  let r = updateProfile(db, 'mia', { profile_keywords: ['AI应用', '企业服务', ' 产品 '] });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.profile_keywords, ['AI应用', '企业服务', '产品']); // trim + 去重
+  r = updateProfile(db, 'mia', { profile_keywords: Array(21).fill('x') });
+  assert.equal(r.status, 422); // 超 20 个
+  r = updateProfile(db, 'mia', { profile_keywords: ['a'.repeat(21)] });
+  assert.equal(r.status, 422); // 单词超 20 字
+  r = updateProfile(db, 'no_such_person', { profile_keywords: ['a'] });
+  assert.equal(r.status, 404);
+  r = updateProfile(db, 'mia', { profile_note: '主管视角' }); // 只改 note，keywords 保留
+  assert.deepEqual(r.profile_keywords, ['AI应用', '企业服务', '产品']);
+  assert.equal(r.profile_note, '主管视角');
+});
+
+test('档案：种子只填空档案，不冲顾问自维护内容', () => {
+  // mia 已自维护关键词 → 重播种后仍在（修正前每次 openDb 无条件覆盖回空）
+  seedRoster(db);
+  const mia = listConsultants(db).find((c) => c.consultant_id === 'mia');
+  assert.deepEqual(mia.profile_keywords, ['AI应用', '企业服务', '产品']);
+});
+
+test('档案：方向关键词让 direction 维度真正出分（空档案恒 0）', () => {
+  const ctx0 = { consultant_id: 'mia', profile_keywords: [], historical_texts: [],
+    watched_count: 0, accepted_count: 0, outcomes_avg: null, now: '2026-08-10T00:00:00.000Z' };
+  const ctx1 = { ...ctx0, profile_keywords: ['AI应用'] };
+  const job = { project_id: 'P-FW-PROF', company: '某厂', role: 'AI应用工程师', pipeline: '', active_state: 'OPEN', captured_at: '2026-08-10' };
+  const d0 = scoreJob(job, 'TEAM_SHARED', ctx0).breakdown.find((d) => d.dim === 'direction').score;
+  const d1 = scoreJob(job, 'TEAM_SHARED', ctx1).breakdown.find((d) => d.dim === 'direction').score;
+  assert.equal(d0, 0);
+  assert.ok(d1 > 0);
 });

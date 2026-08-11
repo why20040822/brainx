@@ -16,6 +16,7 @@ import { replay, recordOutcome } from '../src/replay.js';
 import { buildDailyCard, buildSyncAlertCard } from '../src/push.js';
 import { jobVisibleTo } from '../src/visibility.js';
 import { relationOf } from '../src/relations.js';
+import { updateProfile } from '../src/roster.js';
 
 const db = openDb();
 
@@ -128,6 +129,22 @@ const TOOLS = {
       consultant_id: { type: 'string' }, source: { type: 'string' }, dry_run: { type: 'boolean' } } },
     run: ({ consultant_id: cid, source = 'fixture', dry_run = false }) =>
       runSync(db, { source, consultant_id: cid, dry_run }),
+  },
+  brainx_profile: {
+    description: '我的档案（方向画像关键词/备注）；传 profile_keywords 或 profile_note 即更新（仅本人，下一轮推荐生效）',
+    inputSchema: { type: 'object', required: ['consultant_id'], properties: {
+      consultant_id: { type: 'string' },
+      profile_keywords: { type: 'array', items: { type: 'string' } },
+      profile_note: { type: 'string' } } },
+    run: ({ consultant_id: cid, profile_keywords, profile_note }) => {
+      if (profile_keywords !== undefined || profile_note !== undefined) {
+        return updateProfile(db, cid, { profile_keywords, profile_note });
+      }
+      const c = loadConsultants(db).find((x) => x.consultant_id === cid);
+      if (!c) return { error: 'NOT_FOUND', consultant_id: cid };
+      return { consultant_id: cid, display_name: c.display_name,
+               profile_keywords: c.profile_keywords || [], profile_note: c.profile_note || '' };
+    },
   },
   brainx_push_preview: {
     description: '预览今日推送卡片（不发送；真发送走 bin/brainx-push.mjs --send，需人确认）',

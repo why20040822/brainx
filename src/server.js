@@ -14,7 +14,7 @@ import { replay, recordOutcome } from './replay.js';
 import { buildDailyCard, buildSyncAlertCard, pushCard } from './push.js';
 import { signSession, verifySession, cookieOf } from './session.js';
 import { signState, verifyState, buildAuthorizeUrl, exchangeCode, oauthConfigured } from './oauth.js';
-import { findByOpenId } from './roster.js';
+import { findByOpenId, updateProfile } from './roster.js';
 import { startBridge } from './bridge.js';
 import { makeAutoPush } from './autopush.js';
 import { saveUserTokens, tokenStatus } from './feishu.js';
@@ -220,6 +220,20 @@ export function createServer(db = openDb(), deps = {}) {
     },
 
     'GET /api/v1/dismiss-reasons': (req, res) => json(res, 200, { items: DISMISS_REASONS }),
+
+    // 我的档案（方向画像）：只许读/改自己；保存后下一轮 recommend 即生效
+    'GET /api/v1/profile': (req, res, cid) => {
+      const c = loadConsultants(db).find((x) => x.consultant_id === cid);
+      json(res, 200, { consultant_id: cid, display_name: c?.display_name || cid,
+        profile_keywords: c?.profile_keywords || [], profile_note: c?.profile_note || '',
+        feishu_auth: tokenStatus(db, cid) });
+    },
+    'PUT /api/v1/profile': async (req, res, cid) => {
+      const b = await body(req);
+      if (!b) return err(res, 400, 'BAD_JSON', '请求体不是合法 JSON');
+      const out = updateProfile(db, cid, b);
+      json(res, out.ok ? 200 : (out.status || 400), out);
+    },
 
     // SSE：桥接器有变化时推 sync/recommend/sync_error；25s 心跳保活
     'GET /api/v1/events': (req, res, cid) => {

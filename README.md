@@ -5,7 +5,7 @@
 
 - **技术栈**：Node ≥22（`node:sqlite` + `node:http`）+ 原生 ES-module 前端，**零 npm 依赖、零框架、零构建**
 - **云版**：http://47.110.93.137:3100（systemd 常驻）· **本地版**：launchd 常驻 http://127.0.0.1:3100
-- 规模：~4600 行（src ~2150 + tests ~1500 + public ~1050），22 个提交，69/69 测试绿
+- 规模：~4600 行（src ~2150 + tests ~1500 + public ~1050），22 个提交，72/72 测试绿
 
 ## 目录与文件（全部内容）
 
@@ -37,14 +37,14 @@ public/               前端（12 文件，1032 行，无构建 ES-module）
   js/api-client.js    fetch 封装
   js/components/      WorkbenchHeader / DecisionQueue / OpportunityRow / OpportunityDrawer
                       / CommitmentSummary / ReplayPanel
-mcp/server.mjs        MCP stdio 服务器（10 工具，三端注册；与 HTTP 同一套领域函数与可见性）
+mcp/server.mjs        MCP stdio 服务器（11 工具，三端注册；与 HTTP 同一套领域函数与可见性）
 bin/                  CLI：sync/recommend/replay/roster/push/web + install-launchd.sh
                       + com.brainx.web.plist（macOS）+ brainx.service（systemd，含 HOME 修复）
 fixtures/             60 职位种子（3 份真实飞书导出衍生）+ roster.json（3 顾问）+ _sources/
 scripts/build_fixture.mjs   fixture 重建
-tests/                8 个测试文件 69 例：core(18) bridge(8) feishu(7) visibility(6)
-                      autopush(5) oauth(5) mcp(2) framework(18)
-docs/VERIFICATION.md  15 节真机验证记录（每次大改的实测证据）
+tests/                8 个测试文件 72 例：core(18) bridge(8) feishu(7) visibility(6)
+                      autopush(5) oauth(5) mcp(2) framework(21)
+docs/VERIFICATION.md  16 节真机验证记录（每次大改的实测证据）
 docs/2026-08-10-bitable-standard-fields-and-cloud-isolation.md  字段标准/数据管理/云端隔离方案
 QUICKSTART.md         开箱即用（云版/本地/打包纪律）
 ```
@@ -76,7 +76,7 @@ QUICKSTART.md         开箱即用（云版/本地/打包纪律）
 ## 运行
 
 ```bash
-npm test                     # 69/69，约 3 秒（Node ≥22；v22 用 node --test "tests/*.test.mjs"）
+npm test                     # 72/72，约 3 秒（Node ≥22；v22 用 node --test "tests/*.test.mjs"）
 node src/server.js           # 开发：127.0.0.1:3000
 sh bin/install-launchd.sh    # macOS 常驻 → 127.0.0.1:3100
 # 服务器部署：rsync（include/exclude 规则，勿多源带尾斜杠！）→ systemctl restart brainx
@@ -84,9 +84,10 @@ sh bin/install-launchd.sh    # macOS 常驻 → 127.0.0.1:3100
 
 ## 当前待办
 
-- **felix/york 登录被拦**：应用 1.0.0 可用范围只有 Mia → 需发 1.0.2（可用范围加人），
-  发布前先取消约 18 项「待发布」垃圾权限（mail/okr/calendar/打卡/建群），否则又被驳回。
-- 三人各自重登一次激活按人消息同步（工作台头部胶囊引导）。
+- ~~felix/york 登录被拦~~（2026-08-11 已解决：清掉全部非白名单待发布权限，
+  1.0.1 免审核发布，可用范围 = mia/felix/york 三人）。
+- 三人各自打开云版重登一次激活按人消息同步（工作台头部胶囊引导）；
+  mia 需在工作台「完善方向档案」填方向关键词（york 已数据播种）。
 - Felix 提供 TalentMatch ATS 职位导出（project_id/Pipeline/HC）→ 替换 P-FIX 占位 ID。
 - brainx.yorkteam.cn 子域名 + HTTPS（现有证书无泛域名）。
 - ~~mia/york 推荐池为空~~（2026-08-10 框架修正：relations.js 推导层，团队池默认 TEAM_SHARED）。
