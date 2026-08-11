@@ -14,12 +14,14 @@ const drawer = createDrawerController();
 
 let model = null;       // workbench 模型
 let recs = [];          // 推荐列表（API 排序原样渲染，前端不重排）
+let profile = null;     // 我的档案（方向画像）
 let blocked = false;
 let showAll = false;
 
 async function refresh() {
-  const [wb, r] = await Promise.all([api.workbench(), api.recommendations(10)]);
+  const [wb, r, p] = await Promise.all([api.workbench(), api.recommendations(10), api.profile()]);
   model = wb;
+  profile = p;
   blocked = !!r.blocked;
   recs = r.items || [];
   renderAll();
@@ -27,8 +29,8 @@ async function refresh() {
 
 function renderAll() {
   renderHeader($('wb-header'), { consultant_id: model.consultant_id, sync: model.sync,
-    feishu_auth: model.feishu_auth }, {
-    onSync: doSync, onLogout: doLogout,
+    feishu_auth: model.feishu_auth, profile }, {
+    onSync: doSync, onLogout: doLogout, onProfile: editProfile,
   });
   renderQueue({
     queueEl: $('queue'), expandEl: $('expand-slot'), subEl: $('queue-sub'),
@@ -169,6 +171,31 @@ function showModal({ title, body, bodyHTML, okText, okPrimary, onOk, collect }) 
   });
   mask.classList.add('open'); modal.hidden = false;
   (modal.querySelector('[data-x=ok]')).focus();
+}
+
+/* ── 档案编辑（方向画像：direction 维度的唯一输入）── */
+function editProfile() {
+  const kws = (profile?.profile_keywords || []).join(' ');
+  showModal({
+    title: `我的方向档案（${profile?.display_name || model.consultant_id}）`,
+    bodyHTML: `<p class="muted" style="margin-top:0">推荐「方向匹配」维度只看这些关键词；空格/逗号分隔，最多 20 个。</p>
+      <input id="pf-kws" class="btn" style="width:100%;margin-bottom:8px" value="" placeholder="例：产品 工程 算法 AI应用" aria-label="方向关键词">
+      <input id="pf-note" class="btn" style="width:100%" value="" placeholder="备注（可选，最多 200 字）" aria-label="档案备注">`,
+    okText: '保存档案', okPrimary: true,
+    collect: () => ({
+      profile_keywords: document.getElementById('pf-kws').value.split(/[\s,，、]+/).filter(Boolean),
+      profile_note: document.getElementById('pf-note').value.trim(),
+    }),
+    onOk: async (v) => {
+      try {
+        const out = await api.saveProfile(v);
+        live(`档案已保存（${out.profile_keywords.length} 个关键词），下次生成推荐即生效`);
+        await refresh();
+      } catch (e) { live(`保存失败：${e.message}`); }
+    },
+  });
+  document.getElementById('pf-kws').value = kws;
+  document.getElementById('pf-note').value = profile?.profile_note || '';
 }
 
 /* ── 同步 / 退出 ── */

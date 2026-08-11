@@ -1,7 +1,7 @@
 /** OpportunityDrawer.js — 职位详情抽屉（PRD §4）+ 决策轨迹（DecisionTrail）。
  * a11y：focus trap、Esc 关闭、关闭后焦点回原行（§12）。
  */
-import { REL_LABEL, ACTION_LABEL, BAND_LABEL, DIM_LABEL, STATE_LABEL } from '../types.js';
+import { REL_LABEL, ACTION_LABEL, BAND_LABEL, DIM_LABEL, STATE_LABEL, PRIORITY_LABEL } from '../types.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -34,8 +34,10 @@ export function renderDrawer({ drawerEl, detail, onAction, onReplay, onClose }) 
       <dt>城市</dt><dd>${esc(j.city || '未知')}</dd>
       <dt>我的关系</dt><dd>${esc(REL_LABEL[j.relation] || j.relation)}</dd>
       <dt>Pipeline</dt><dd>${esc(j.pipeline || '未知')}</dd>
+      <dt>优先级</dt><dd>${esc(PRIORITY_LABEL[j.priority] || '—')}</dd>
       <dt>HC</dt><dd>${j.hc == null ? '未知' : esc(j.hc)}</dd>
       <dt>状态</dt><dd>${esc(j.active_state)}</dd>
+      ${j.notes ? `<dt>需求细节</dt><dd style="white-space:pre-wrap">${esc(j.notes)}</dd>` : ''}
       <dt>承接状态</dt><dd>${esc(STATE_LABEL[detail.engagement_state] || detail.engagement_state)}</dd>
       <dt>来源</dt><dd>${j.source_url ? `<a href="${esc(j.source_url)}" target="_blank" rel="noreferrer">TTC 来源链接 ↗</a>` : '—'}</dd>
       <dt>最近更新</dt><dd class="mono">${esc(String(j.updated_at || j.captured_at || '').slice(0, 16).replace('T', ' '))}</dd>

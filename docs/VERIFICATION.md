@@ -120,3 +120,52 @@ sh bin/install-launchd.sh               # 幂等；卸载见脚本头注释
 **测试**：新增 feishu.test.mjs（7 例：加密往返/无明文落库/refresh 轮换/被拒降级/网络异常不标记/过期直拒/翻页与时间换算）+ visibility.test.mjs（6 例：可见性规则/HTTP 闸门/跨人 404/事件结果过滤/SSE 定向/回调落令牌）；bridgeOnce 变异步 + 按人隔离 3 例；全套 **51/51 绿**（本地 Node v26 + 服务器 Node v22 双验）。
 
 **服务器实测（47.110.93.137，2026-08-10）**：0005 迁移自动跑（user_version 5），93 条消息归属 mia，游标 ×2（全局+@mia）；桥接首轮三顾问 rows_read=29 complete=1（Bitable 走 lark-cli 回落）；无人有令牌 → 消息按设计暂停，各自重登即恢复。
+
+## 14. 框架结构修正（2026-08-10，源码审计驱动）
+
+**起因**：对全仓做框架级审计（对照 2026-08-03 设计文档与 PRD 纪律），发现 8 处结构缺陷并全部修正。每处附回归测试（新增 tests/framework.test.mjs，13 例）。
+
+**缺陷与修正**：
+1. **主链路断链（最重）**：recommend 只评「本人有 memberships 行」的职位，桥接按纪律不写关系、fixture 是 Felix 个人导出 → mia/york 推荐池恒为空。新增 `src/relations.js`（关系推导单一权威：本人行 > 他人 MY_JOB/PRIMARY_PM→OTHER_CONSULTANT > 团队池默认 TEAM_SHARED），recommend/latestRun/opportunity（HTTP+MCP）/engage 全部接入
+2. **fixture 属主污染**：mia 跑 fixture 同步会把 Felix 的 MY_JOB 继承成自己的。runSync 加属主守卫（仅 `consultant_owner=felix` 本人同步写关系）；`fetchFeishuJobs` 同步改 relation=null（修正前会给同步者写 TEAM_SHARED，把其策展关系到期冲掉）
+3. **接单守卫缺口**：OTHER_CONSULTANT 风险文案写「默认不可接单」但状态机不拦 → engage ACCEPT 对他人主做职位 409
+4. **状态机 VIEWED 不可达 + VIEW 降级关注**：current_engagement 视图不含 VIEWED（「已查看」永不浮现，UI 徽章失效）；VIEW 对 WATCHED 职位写 next_state=VIEWED 会静默冲掉关注。0006 重建视图纳入 VIEWED；VIEW 的 next_state 按当前态求值（WATCHED 保持 WATCHED）；UNWATCH 的 note『关注回滚』落 reason 列（修正前定义了从不持久化）
+5. **captured_at 失真**：每轮桥接 UPSERT 回刷 captured_at → scorer 新鲜度恒满分。改为六事实字段（公司/职位/城市/pipeline/HC/状态）任一变化（null 安全 IS NOT）才前进
+6. **raw_json 出网**：latestRun 整行展开 job_facts → workbench/recommendations/MCP 每条推荐携整段原始负载。剥离（opportunity 路由本就剥）
+7. **静态服务前缀漏洞**：`fp.startsWith(PUBLIC)` 裸前缀 → 兄弟目录 `public-x/…` 被误判内部。抽出 `isPathInside`（base+sep）导出并测试
+8. **migrations 纯位置记账 + push_log 唯一键漏洞**：user_version 序数跳文件会错位 → schema_migrations 按文件名记账（旧库 user_version=N 自动回填前 N 个文件名）；push_log `UNIQUE(consultant_id,kind,run_id)` 遇 NULL 失效（SYNC_ALERT 恒 NULL 可重复插）→ '' 哨兵 + 0006 回填存量
+
+**评分质量**：similarity 旧分词 `(?=[一-鿿])` 把中文逐字切开又被 length>1 过滤 → 纯中文职位相似度恒 0；改 CJK bigram（tokenize 导出），「增长负责人」×「增长经理」命中「增长」。
+
+**验证**：64/64 测试绿（51 旧 + 13 新）；真实库副本实测迁移：user_version 5→6，0006 单文件补跑，视图含 VIEWED，push_log 存量 NULL 全部回填为 ''，recommendations 150 行 / events 169 行无损。
+
+## 15. Bitable 标准字段适配（2026-08-10，字段解析逻辑修正）
+
+**起因**：用户指出字段解析逻辑有问题，要求按云端标准字段实测重构。实测（field-list + 31 记录全扫）：「职位」是多选**职能类别**非职位名；「还做吗」是**优先级+状态**（1重点高优12/正常招11/无,待定4/新4）；「文本」是真实需求细节；「主做」user 列 31/31 全空。
+
+**旧解析缺陷（实锤）**：① 职位多选被顿号拼成假职位名（22/86 行）且勾选变化致 project_id 漂移重复；② 文本 0/86 入库；③ 还做吗原文塞 pipeline，优先级信号全丢；④ 主做/公司类型丢弃。
+
+**修正**：新增 `src/bitable.js` 解析层（唯一权威，bridge/sync 共用）——公司×单职能展开（project_id 仍 md5(公司|职能)，单职能行 ID 无缝续命，与 fixture 同源自然合并）；priority 结构化（HIGH/NEW/NORMAL/STANDBY，STANDBY→COOLING）；notes/company_type 入库（0007 扩列）；owner_names 解析入 raw_json 备用。captured_at 变化检测扩为 9 字段。scorer 活跃度加 priority 加成（HIGH+25/NEW+15/NORMAL+10）；卡片 🔥 高优；抽屉展示优先级+需求细节。
+
+**0007 迁移**：扩三列；桥接旧复合行 CLOSED（12 行，fixture（多岗）策展行 23 行保留）；非属主 fixture 关系到期（云端 mia 60 条污染实锤，一并清理）。
+
+**验证**：69/69 测试绿；真 lark-cli 干跑 31→51 行（像素律动 4 职能带 P0 文本）；真实库副本全演练（86→119 行，退役/清理/回填全对）。方案与数据管理纪律见 docs/2026-08-10-bitable-standard-fields-and-cloud-isolation.md。
+
+## 16. 云端登录鉴权完成 + 顾问档案系统（2026-08-11）
+
+**飞书控制台卡点清除（chrome-devtools 驱动 open.feishu.cn 实操作）**：
+- 1.0.1 版本 2026-07-09 被企业管理员驳回（~40 项非白名单权限：mail/okr/calendar/打卡/建群/妙记等——lark-cli --recommend 捆进来的）；
+- 权限管理页逐项取消全部「待发布」垃圾权限（46 次点击，列表边删边刷新）→ 版本草稿「权限变更：暂无」；
+- 可用范围：仅 Mia → **Mia + Felix 黄鑫 + York 姚堃**（部分成员）；
+- 重新发布 1.0.1：**免审核直接通过（≤10 名成员 + 无权限变更），2026-08-11 14:26 已上线**。felix/york 的 OAuth 拦截解除。
+
+**顾问档案系统（本轮新增）**：
+- `PUT/GET /api/v1/profile`（仅本人）；MCP `brainx_profile`；工作台头部「完善方向档案」入口（空档案醒目提示）；
+- `updateProfile` 校验：≤20 词、单词 ≤20 字、去重、note ≤200 字；下一轮 recommend 即生效（buildCtx 实时读表）；
+- **seedRoster 修正**：种子只填空档案，不再无条件覆盖自维护内容（修正前每次 openDb 冲掉）；
+- york 档案数据播种：源自其本人 07-25 在 ZP 群的高亮指令（产品/技术/工程/算法/前后端/运营增长/AI应用）；felix 已有 8 词；mia 待自填；
+- 体检工具：`scripts/verify_isolation.mjs`（只读，逐人核对 档案/令牌/群缓存/消息可见/快照/推荐）。
+
+**三人激活路径（部署新代码后）**：各自打开 http://47.110.93.137:3100 → 飞书授权（现在能过了）→ 令牌加密落库 → 头部胶囊消失 → 下轮桥接（≤3 分钟）按人拉群消息。`node scripts/verify_isolation.mjs` 逐项确认。
+
+**注意**：profile 端点与前端档案入口在本地仓库，云端部署会连带触发 0006/0007 迁移（用户指示数据库暂缓→暂未部署）；**控制台侧的可用范围已即时生效，felix/york 现在就能登录云版**，令牌落库与按人桥接在已部署的旧代码里就支持。

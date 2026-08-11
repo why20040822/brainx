@@ -30,6 +30,8 @@ export const api = {
   syncRuns: (source = 'fixture', dryRun = false) => req('POST', '/api/v1/sync-runs', { source, dry_run: dryRun }),
   outcomes: (payload) => req('POST', '/api/v1/outcomes', payload),
   dismissReasons: () => req('GET', '/api/v1/dismiss-reasons'),
+  profile: () => req('GET', '/api/v1/profile'),
+  saveProfile: (payload) => req('PUT', '/api/v1/profile', payload),
   logout: () => req('DELETE', '/api/v1/session'),
 };
 

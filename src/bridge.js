@@ -1,11 +1,12 @@
 /** bridge.js — 飞书桥接器（P2 + 按人改造 2026-08-10）：轮询 → 增量入库 → 变化检测。
  *
  * 职责切分（重要）：桥接器只刷新「事实」(job_facts)，**不动关系**(job_memberships)。
- * 关系是策展资产（fixture 种子 / 未来按顾问计算），payload 里 relation=null，
- * runSync 的 `if (j.relation)` 分支自然跳过——Felix 的 MY_JOB/PRIMARY_PM 不会被
- * 团队池语义冲掉。
+ * 关系是策展资产（fixture 种子 / relations.js 推导），payload 里 relation=null，
+ * runSync 的 `if (j.relation && writeRels)` 分支自然跳过——Felix 的 MY_JOB/PRIMARY_PM
+ * 不会被团队池语义冲掉。
  *
- * project_id 与 fixture 同一推导（P-FIX-<md5(公司|职位)[:8]>）→ 同源公司自动合并，
+ * 字段解析（2026-08-10 修正）：Bitable 记录由 src/bitable.js 统一展开为「公司×单职能」
+ * 多行，project_id 与 fixture 同一推导（P-FIX-<md5(公司|职能)[:8]>）→ 同源自然合并，
  * 待 ATS 导出后统一替换（补全文档 §17.2）。
  *
  * 按人改造（硬边界）：
@@ -15,14 +16,14 @@
  *     （consultant_chats ∩ BRIDGE_CHATS）。无令牌/不是成员 = 一条都看不到，
  *     可见性归属写 job_message_visibility。绝不再用 Mia 身份替所有人拉。
  */
-import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { now } from './db.js';
 import { runSync } from './sync.js';
 import { getValidAccessToken, listUserChats, listChatMessages, listBitableRecords } from './feishu.js';
+import { BITABLE_BASE, BITABLE_TABLE, deriveProjectId, flatLark, flatApi, parseBitableRecord } from './bitable.js';
 
-const BASE_TOKEN = 'RR5NbWHEfacz4jsRYMocy1qAnSh';
-const TABLE_ID = 'tblsZBwtKIrIgtre';
+// deriveProjectId 权威已迁 bitable.js；此处 re-export 保持既有 import 不破
+export { deriveProjectId };
 
 /** L3 证据群：职位市场群 / ZP-订阅群 / FLX-职位优先级群 */
 export const BRIDGE_CHATS = [
@@ -30,10 +31,6 @@ export const BRIDGE_CHATS = [
   { chat_id: 'oc_a56daa7bcbb36c27ae2d5de16f01abf1', name: 'ZP-订阅群' },
   { chat_id: 'oc_667758eb50ad4b1af86ae99d79859870', name: 'FLX-职位优先级群' },
 ];
-
-/** 与 scripts/build_fixture.mjs 同一推导，保证同源公司合并到同一 project_id。 */
-export const deriveProjectId = (company, role) =>
-  'P-FIX-' + createHash('md5').update(`${company}|${role}`).digest('hex').slice(0, 8).toUpperCase();
 
 const lark = (args) => {
   // timeout 防 lark-cli 挂死（实测会无限 hang 且自我复活拖垮整机）；45s 上限杀掉
@@ -44,52 +41,21 @@ const lark = (args) => {
 
 /** 职位盘点 Bitable → runSync payload（relation=null：桥接不碰关系）。lark-cli 通道。 */
 export function fetchBitablePayload(execImpl = lark) {
-  const d = execImpl(['base', '+record-list', '--base-token', BASE_TOKEN,
-    '--table-id', TABLE_ID, '--page-size', '100', '--format', 'json']).data;
-  const flat = (v) => (Array.isArray(v) ? v.filter(Boolean).join('、') : (v ?? ''));
+  const d = execImpl(['base', '+record-list', '--base-token', BITABLE_BASE,
+    '--table-id', BITABLE_TABLE, '--page-size', '100', '--format', 'json']).data;
   const jobs = [];
   for (let i = 0; i < d.data.length; i++) {
     const rec = Object.fromEntries(d.fields.map((c, j) => [c, d.data[i][j]]));
-    const job = bitableJob(rec, d.record_id_list[i]);
-    if (job) jobs.push(job);
+    jobs.push(...parseBitableRecord(rec, d.record_id_list[i], flatLark));
   }
   return { as_of: now(), jobs };
 }
 
-/** 直连通道（用户令牌）：原生 API 的字段值是富文本段 [{type:'text',text}] / 人员 [{name}]。 */
-const flatRaw = (v) => {
-  if (Array.isArray(v)) {
-    return v.map((x) => (x && typeof x === 'object' ? (x.text ?? x.name ?? '') : x))
-      .filter(Boolean).join('、');
-  }
-  if (v && typeof v === 'object') return v.text ?? v.name ?? '';
-  return v ?? '';
-};
-
-const bitableJob = (rec, recordId) => {
-  const company = typeof rec['公司'] === 'string' ? rec['公司'] : flatRaw(rec['公司']);
-  const role = flatRaw(rec['职位']) || '职位待定';
-  if (!company || company === 'TTC') return null;
-  return {
-    project_id: deriveProjectId(company, role),
-    company, role,
-    city: flatRaw(rec['地点']) || null,
-    pipeline: flatRaw(rec['还做吗']) || null,
-    hc: null, // 飞书源无 HC（已实证），风险文案由 scorer 出
-    active_state: /无|待定/.test(flatRaw(rec['还做吗'])) ? 'COOLING' : 'OPEN',
-    relation: null, // 桥接器不动关系（见文件头注释）
-    source_url: `feishu://base/${BASE_TOKEN}?record=${recordId}`,
-  };
-};
-
 /** 直连通道（用户令牌）：与 fetchBitablePayload 产出同一 payload 形状。 */
 export async function fetchBitablePayloadApi(token, fetchImpl = fetch) {
-  const items = await listBitableRecords(token, BASE_TOKEN, TABLE_ID, fetchImpl);
+  const items = await listBitableRecords(token, BITABLE_BASE, BITABLE_TABLE, fetchImpl);
   const jobs = [];
-  for (const it of items) {
-    const job = bitableJob(it.fields || {}, it.record_id);
-    if (job) jobs.push(job);
-  }
+  for (const it of items) jobs.push(...parseBitableRecord(it.fields || {}, it.record_id, flatApi));
   return { as_of: now(), jobs };
 }
 

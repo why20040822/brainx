@@ -1,10 +1,18 @@
 /** recommend.js — 生成一轮推荐并冻结（PRD §6/§8，补全文档 §13.4）。
  * 只读最近 complete=1 快照；冻结 recommendations；Top10 写 RECOMMENDED 事件。
+ *
+ * 2026-08-10 框架修正：
+ *   - 关系一律走 relations.js 推导（本人行 > 他人主做 → OTHER_CONSULTANT >
+ *     团队池默认 TEAM_SHARED）。修正前无本人关系行的职位全被打成 UNKNOWN 硬阻断，
+ *     mia/york 的推荐池恒为空（桥接事实进不了推荐 = 主链路断链）；
+ *   - latestRun 出网前剥离 raw_json（修正前 workbench/recommendations/MCP
+ *     每条推荐都携带整段原始负载，既泄露又臃肿）。
  */
 import { now, uuid } from './db.js';
 import { latestCompleteSnapshot, latestSync } from './sync.js';
 import { WEIGHTS, POLICY_VERSION, hardBlock, scoreJob, actionOf, bandOf, sortRecs, explain } from './scorer.js';
 import { listConsultants } from './roster.js';
+import { relationMap, deriveRelation } from './relations.js';
 
 /** 花名册从 DB 读（0003 起 consultants 表为权威，fixtures 只是种子）。 */
 export function loadConsultants(db) {
@@ -48,15 +56,13 @@ export function recommend(db, consultant_id, { top = 10, dry_run = false } = {})
   }
 
   const jobs = db.prepare(`SELECT * FROM job_facts`).all();
-  const rels = db.prepare(`SELECT project_id, relation FROM job_memberships
-    WHERE consultant_id=? AND valid_to IS NULL`).all(consultant_id);
-  const relMap = Object.fromEntries(rels.map((r) => [r.project_id, r.relation]));
+  const relCtx = relationMap(db, consultant_id);
   const ctx = buildCtx(db, consultant_id, snapshot);
 
   const evaluated = [];
   let blockedCount = 0;
   for (const job of jobs) {
-    const relation = relMap[job.project_id] || 'UNKNOWN';
+    const relation = deriveRelation(relCtx, job.project_id);
     const block = hardBlock(job, relation, true);
     if (block) { blockedCount++; continue; }
     const scored = scoreJob(job, relation, ctx);
@@ -117,12 +123,14 @@ export const publicRec = (r) => ({
   job: {
     project_id: r.job.project_id, company: r.job.company, role: r.job.role,
     city: r.job.city, pipeline: r.job.pipeline, hc: r.job.hc,
-    active_state: r.job.active_state, relation: r.relation, source_url: r.job.source_url,
+    active_state: r.job.active_state, priority: r.job.priority ?? null,
+    notes: r.job.notes ?? null, company_type: r.job.company_type ?? null,
+    relation: r.relation, source_url: r.job.source_url,
     captured_at: r.job.captured_at,
   },
 });
 
-/** 读最新一轮推荐（工作台默认视图）。 */
+/** 读最新一轮推荐（工作台默认视图）。raw_json 不出网（原始负载只供库内/回放对照）。 */
 export function latestRun(db, consultant_id) {
   const run = db.prepare(`SELECT * FROM decision_runs WHERE consultant_id=?
     ORDER BY created_at DESC LIMIT 1`).get(consultant_id);
@@ -130,9 +138,7 @@ export function latestRun(db, consultant_id) {
   const recs = db.prepare(`SELECT * FROM recommendations WHERE run_id=? ORDER BY rank`).all(run.run_id);
   const jobs = db.prepare(`SELECT * FROM job_facts`).all();
   const jobMap = Object.fromEntries(jobs.map((j) => [j.project_id, j]));
-  const rels = db.prepare(`SELECT project_id, relation FROM job_memberships
-    WHERE consultant_id=? AND valid_to IS NULL`).all(consultant_id);
-  const relMap = Object.fromEntries(rels.map((r) => [r.project_id, r.relation]));
+  const relCtx = relationMap(db, consultant_id);
   return {
     run,
     items: recs.map((r) => ({
@@ -140,7 +146,8 @@ export function latestRun(db, consultant_id) {
       confidence_band: r.confidence_band, evidence_coverage: r.evidence_coverage,
       reasons: JSON.parse(r.reasons_json), risks: JSON.parse(r.risks_json),
       evidence_refs: JSON.parse(r.evidence_refs_json), breakdown: JSON.parse(r.breakdown_json),
-      job: { ...jobMap[r.project_id], relation: relMap[r.project_id] || 'UNKNOWN' },
+      job: { ...jobMap[r.project_id], raw_json: undefined,
+             relation: deriveRelation(relCtx, r.project_id) },
     })),
   };
 }

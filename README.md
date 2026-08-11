@@ -5,14 +5,16 @@
 
 - **技术栈**：Node ≥22（`node:sqlite` + `node:http`）+ 原生 ES-module 前端，**零 npm 依赖、零框架、零构建**
 - **云版**：http://47.110.93.137:3100（systemd 常驻）· **本地版**：launchd 常驻 http://127.0.0.1:3100
-- 规模：~4200 行（src 1913 + tests 1017 + public 1032），16 个提交，51/51 测试绿
+- 规模：~4600 行（src ~2150 + tests ~1500 + public ~1050），22 个提交，72/72 测试绿
 
 ## 目录与文件（全部内容）
 
 ```
-src/                  后端核心（16 文件，1913 行）
-  server.js           HTTP 路由 + SSE 总线（定向投递）+ 静态文件；入口 main
+src/                  后端核心（18 文件，~2150 行）
+  server.js           HTTP 路由 + SSE 总线（定向投递）+ 静态文件（isPathInside 防穿越）；入口 main
   bridge.js           飞书桥接器：3 分钟一轮；Bitable 团队池 + 按人令牌读各自所在群
+  bitable.js          Bitable 字段解析层（唯一权威）：公司×单职能展开、priority 结构化、双通道拍平
+  relations.js        关系推导单一权威：本人行 > 他人主做→OTHER_CONSULTANT > 团队池 TEAM_SHARED
   feishu.js           令牌 AES-256-GCM 存取 + refresh 轮换 + 直连 OpenAPI（45s 超时）
   oauth.js            网页授权 code flow；显式申请白名单 9 项 scope（含 offline_access）
   session.js          HMAC 无状态 Cookie（密钥 data/.secret，0600）
@@ -27,21 +29,23 @@ src/                  后端核心（16 文件，1913 行）
   visibility.js       可见性单一权威（server.js 与 mcp 共用，fail-closed）
   db.js               node:sqlite 打开 + migrations 按位置迁移 + 阿里云 RDS MySQL 人才库连接（懒加载）
   env.js              .env 加载
-migrations/           5 个迁移：init / push_log / consultants / bridge / per_user（令牌+可见性）
+migrations/           7 个迁移：init / push_log / consultants / bridge / per_user / framework
+                      / bitable_fields（扩列+退役+污染清理）
 public/               前端（12 文件，1032 行，无构建 ES-module）
   index.html login.html styles.css
   js/main.js          页面编排 + SSE 客户端（1s 去抖刷新）
   js/api-client.js    fetch 封装
   js/components/      WorkbenchHeader / DecisionQueue / OpportunityRow / OpportunityDrawer
                       / CommitmentSummary / ReplayPanel
-mcp/server.mjs        MCP stdio 服务器（10 工具，三端注册；与 HTTP 同一套领域函数与可见性）
+mcp/server.mjs        MCP stdio 服务器（11 工具，三端注册；与 HTTP 同一套领域函数与可见性）
 bin/                  CLI：sync/recommend/replay/roster/push/web + install-launchd.sh
                       + com.brainx.web.plist（macOS）+ brainx.service（systemd，含 HOME 修复）
 fixtures/             60 职位种子（3 份真实飞书导出衍生）+ roster.json（3 顾问）+ _sources/
 scripts/build_fixture.mjs   fixture 重建
-tests/                7 个测试文件 51 例：core(18) bridge(8) feishu(7) visibility(6)
-                      autopush(5) oauth(5) mcp(2)
-docs/VERIFICATION.md  13 节真机验证记录（每次大改的实测证据）
+tests/                8 个测试文件 72 例：core(18) bridge(8) feishu(7) visibility(6)
+                      autopush(5) oauth(5) mcp(2) framework(21)
+docs/VERIFICATION.md  16 节真机验证记录（每次大改的实测证据）
+docs/2026-08-10-bitable-standard-fields-and-cloud-isolation.md  字段标准/数据管理/云端隔离方案
 QUICKSTART.md         开箱即用（云版/本地/打包纪律）
 ```
 
@@ -104,9 +108,10 @@ npm test                    # 51/51 全绿，约 3 秒
 第 4 步是前台运行，关终端就停。要开机自启 / 崩溃拉起：
 
 ```bash
-sh bin/install-launchd.sh   # macOS -> http://127.0.0.1:3100
-# Linux 服务器：把代码 rsync 到 /opt/brainx，再 systemctl restart brainx
-#   （systemd 服务文件在 bin/brainx.service）
+npm test                     # 72/72，约 3 秒（Node ≥22；v22 用 node --test "tests/*.test.mjs"）
+node src/server.js           # 开发：127.0.0.1:3000
+sh bin/install-launchd.sh    # macOS 常驻 → 127.0.0.1:3100
+# 服务器部署：rsync（include/exclude 规则，勿多源带尾斜杠！）→ systemctl restart brainx
 ```
 
 ### 7. 阿里云 RDS MySQL 人才库（可选，不用人才库可跳过）

@@ -1,10 +1,10 @@
-/** WorkbenchHeader.js — 产品名/顾问/同步状态胶囊/同步按钮（PRD §3.2）。 */
+/** WorkbenchHeader.js — 产品名/顾问/档案入口/同步状态胶囊/同步按钮（PRD §3.2）。 */
 import { REL_LABEL } from '../types.js';
 
 const SYNC_LABEL = { READY: '已同步', RUNNING: '同步中', INCOMPLETE: '本次同步不完整',
   AUTH_EXPIRED: 'TTC 登录失效', ERROR: '同步失败', EMPTY: '尚未同步' };
 
-export function renderHeader(el, { consultant_id, sync, feishu_auth }, { onSync, onLogout }) {
+export function renderHeader(el, { consultant_id, sync, feishu_auth, profile }, { onSync, onLogout, onProfile }) {
   el.innerHTML = '';
   const brand = document.createElement('h1');
   brand.className = 'wb-brand';
@@ -14,6 +14,14 @@ export function renderHeader(el, { consultant_id, sync, feishu_auth }, { onSync,
   actor.textContent = consultant_id;
   const spacer = document.createElement('span');
   spacer.className = 'spacer';
+
+  // 档案入口：方向关键词为空时醒目提示（空档案 = direction 维度恒 0）
+  const profileBtn = document.createElement('button');
+  const empty = !profile?.profile_keywords?.length;
+  profileBtn.className = empty ? 'btn btn-quiet auth-warn' : 'btn btn-quiet';
+  profileBtn.textContent = empty ? '完善方向档案' : `档案（${profile.profile_keywords.length} 词）`;
+  profileBtn.title = empty ? '推荐的方向匹配维度需要你的方向关键词' : profile.profile_keywords.join(' / ');
+  profileBtn.addEventListener('click', onProfile);
 
   const pill = document.createElement('span');
   pill.className = 'sync-pill';
@@ -44,5 +52,5 @@ export function renderHeader(el, { consultant_id, sync, feishu_auth }, { onSync,
   logoutBtn.textContent = '退出';
   logoutBtn.addEventListener('click', onLogout);
 
-  el.append(brand, actor, spacer, ...(authLink ? [authLink] : []), pill, syncBtn, logoutBtn);
+  el.append(brand, actor, profileBtn, spacer, ...(authLink ? [authLink] : []), pill, syncBtn, logoutBtn);
 }
