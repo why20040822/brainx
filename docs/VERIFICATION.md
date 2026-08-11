@@ -183,3 +183,13 @@ sh bin/install-launchd.sh               # 幂等；卸载见脚本头注释
 **推荐分化验证**：york（档案 7 词）Top5 全 RECOMMEND_ACCEPT 81.9-90.9 分（像素律动/今日宜休/雷鸟…多岗命中 4 词）；mia（空档案）Top5 RECOMMEND_WATCH 58-63 分——方向维度差异完全由档案驱动，空档案提示已在前端就位。
 
 **健康**：HTTP 200；oauth/status configured=true、dev_auth=false；systemd active。
+
+## 18. RDS MySQL 人才库接通（2026-08-11 晚）
+
+**背景**：远端 main 带入 MySQL 人才库集成（db.js MySQL 段 + init-talent-schema.mjs + mysql2 依赖——懒加载池，不调 getMysqlPool 不连接，SQLite 路径与 72/72 测试不受影响）。
+
+**衔接决策**：ttc_sync 账号权限 = `ttc_talent`.* ALL（无 CREATE DATABASE）→ 7 表直接进统一实例 ttc_talent（与「统一云端数据实例」纪律一致；与既有 19 表零重名冲突，已核验）。
+
+**实施**：凭据经 TTC 主仓 .env 桥接写入 brainx 本地与云端 .env（BRAINX_MYSQL_USER/PASSWORD/DATABASE/HOST/PORT，全程未打印明文）；`npm install mysql2`（首个 npm 依赖）；`node scripts/init-talent-schema.mjs` 幂等建表。
+
+**验证**：本地与云端（47.110.93.137）双向连通；7 表（user/talent/tag/talent_tag/resume/position/match_record）全部就绪，talent 10 列、外键 5 条；云端 systemctl restart 后服务 active、oauth/status 正常。
