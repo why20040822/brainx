@@ -193,3 +193,14 @@ sh bin/install-launchd.sh               # 幂等；卸载见脚本头注释
 **实施**：凭据经 TTC 主仓 .env 桥接写入 brainx 本地与云端 .env（BRAINX_MYSQL_USER/PASSWORD/DATABASE/HOST/PORT，全程未打印明文）；`npm install mysql2`（首个 npm 依赖）；`node scripts/init-talent-schema.mjs` 幂等建表。
 
 **验证**：本地与云端（47.110.93.137）双向连通；7 表（user/talent/tag/talent_tag/resume/position/match_record）全部就绪，talent 10 列、外键 5 条；云端 systemctl restart 后服务 active、oauth/status 正常。
+
+## 19. 决策工作台前端原型合并验证（2026-08-11 晚）
+
+**合并**：远端分支 `agent/add-decision-workbench-frontend`（另一路 AI 工具的产出）→ main（d65e52a，纯新增无冲突）。内容：Next.js 16 + React 19 + TS 的决策工作台原型 `frontend/decision-workbench/`（五分组决策模型/事实卡/证据/回放/承接/通知，契约形状 demo 数据 decision-demo.ts，不调真实接口）。README 明示与 public/ 零依赖生产界面并存，不覆盖。
+
+**验证**（npm test = next build + 生产实例渲染实测）：
+- `next build` 全绿（TS 通过、静态生成 4/4）；补 next.config.ts turbopack root（消除仓库根锁文件误推断告警）+ app/icon.svg（消除唯一 console 404）；
+- 渲染实测（chrome-devtools，127.0.0.1:3101）：五分组（结果收口/高动能推进/新机会验证/维护观察/暂不推荐）、职位行（推进分+可靠度+信号）、详情展开（事实卡/scoreNotes/证据/回放 RUN-1842/验证动作/承接按钮）、我的承接、今日提醒、左栏 Policy v1.2——全部正常，console 零错误；
+- 主仓 72/72 测试不受影响（前端原型独立目录，不进 node --test）。
+
+**定位**：public/ 仍是生产界面（云版在用）；原型待接口契约确认后再决定是否替换入口（decision-demo.ts → API 适配层：workbench/recommendations/opportunities/engagement/outcomes/replay/同步七个端点，形状已对齐）。
