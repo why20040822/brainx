@@ -169,3 +169,17 @@ sh bin/install-launchd.sh               # 幂等；卸载见脚本头注释
 **三人激活路径（部署新代码后）**：各自打开 http://47.110.93.137:3100 → 飞书授权（现在能过了）→ 令牌加密落库 → 头部胶囊消失 → 下轮桥接（≤3 分钟）按人拉群消息。`node scripts/verify_isolation.mjs` 逐项确认。
 
 **注意**：profile 端点与前端档案入口在本地仓库，云端部署会连带触发 0006/0007 迁移（用户指示数据库暂缓→暂未部署）；**控制台侧的可用范围已即时生效，felix/york 现在就能登录云版**，令牌落库与按人桥接在已部署的旧代码里就支持。
+
+## 17. 云端部署 + 数据库衔接（2026-08-11 16:32）
+
+**部署**：rsync（排除 .git/data/logs/node_modules/.env，--delete）→ systemctl restart brainx。启动即自动跑 0006+0007（schema_migrations 按名记账，旧库 user_version=5 → 只补 0006/0007）。
+
+**迁移实测（生产库）**：user_version=7；视图含 VIEWED；扩列 priority/notes/company_type；旧复合行 CLOSED 12、fixture（多岗）23 行保留；mia 污染关系 60→0、felix 60 不动；push_log NULL 回填清零。
+
+**桥接首轮（重启后 7 秒）**：三顾问各 complete=1、rows_read=51（31 记录展开）；job_facts 86→119；priority/notes/company_type 回填 51/23/44；三顾问同步刷新一轮推荐。
+
+**按人隔离激活（首个真实信号）**：mia 已重登——令牌有效、群缓存 38、消息可见 161（按人桥接生产中工作）；felix/york 待发（1.0.1 已发布，随时可登）。`scripts/verify_isolation.mjs` 云端实跑出这份体检。
+
+**推荐分化验证**：york（档案 7 词）Top5 全 RECOMMEND_ACCEPT 81.9-90.9 分（像素律动/今日宜休/雷鸟…多岗命中 4 词）；mia（空档案）Top5 RECOMMEND_WATCH 58-63 分——方向维度差异完全由档案驱动，空档案提示已在前端就位。
+
+**健康**：HTTP 200；oauth/status configured=true、dev_auth=false；systemd active。
