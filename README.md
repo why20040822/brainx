@@ -18,16 +18,16 @@ src/                  后端核心（18 文件，~2150 行）
   feishu.js           令牌 AES-256-GCM 存取 + refresh 轮换 + 直连 OpenAPI（45s 超时）
   oauth.js            网页授权 code flow；显式申请白名单 9 项 scope（含 offline_access）
   session.js          HMAC 无状态 Cookie（密钥 data/.secret，0600）
-  sync.js             同步批次 + job_facts UPSERT（9 事实字段变化才前进 captured_at）+ 属主守卫
-  recommend.js        生成一轮推荐（快照闸门；接 relations 推导；latestRun 剥离 raw_json）
-  scorer.js           六维确定性评分（CJK bigram 分词；priority 活跃度加成；UNKNOWN 硬阻断）
-  engagement.js       承接状态机（VIEW 不降级关注；ACCEPT 拦他人主做；事件账本推导）
+  sync.js             同步批次 sync_runs + job_facts UPSERT + 关系落位（含硬约束校验）
+  recommend.js        生成一轮推荐（快照闸门：同步不完整 -> blocked 不落库）
+  scorer.js           六维确定性评分（同批输入同排序，禁随机数；UNKNOWN 关系硬阻断）
+  engagement.js       承接状态机 VIEW->WATCH->ACCEPT->COMPLETE/DISMISS（事件账本推导，无状态表）
   replay.js           冻结回放：只读 recommendations 冻结行，不重算
-  autopush.js         重大变化检测（Top1 易主 / Top3 新 ACCEPT 档）→ 推卡钩子
-  push.js             飞书 legacy v1 卡片 + lark-cli --as bot 发送（run_id '' 哨兵幂等）
+  autopush.js         重大变化检测（Top1 易主 / Top3 新 ACCEPT 档）-> 推卡钩子
+  push.js             飞书 legacy v1 卡片构建 + lark-cli --as bot 发送（push_log 幂等）
   roster.js           顾问花名册（DB 权威，fixtures/roster.json 幂等播种）
   visibility.js       可见性单一权威（server.js 与 mcp 共用，fail-closed）
-  db.js               node:sqlite 打开 + migrations 按文件名记账（schema_migrations 表）
+  db.js               node:sqlite 打开 + migrations 按位置迁移 + 阿里云 RDS MySQL 人才库连接（懒加载）
   env.js              .env 加载
 migrations/           7 个迁移：init / push_log / consultants / bridge / per_user / framework
                       / bitable_fields（扩列+退役+污染清理）
@@ -49,31 +49,63 @@ docs/2026-08-10-bitable-standard-fields-and-cloud-isolation.md  字段标准/数
 QUICKSTART.md         开箱即用（云版/本地/打包纪律）
 ```
 
-## 数据模型（7+3 表）
+## 如何运行
 
-`sync_runs`（同步批次，complete=1 才能用于推荐）→ `job_facts`（职位事实，project_id 主键，
-团队共享单表）→ `job_memberships`（顾问×职位关系，valid_to 区间）→ `decision_runs` +
-`recommendations`（冻结行）→ `decision_events`（事件账本）→ `job_outcomes`（结果观察，幂等键）。
-桥接侧：`bridge_cursor`（按人游标 `chat:oc_x@cid`）、`job_messages` + `job_message_visibility`
-（消息全局一条，可见性按人登记）、`consultant_tokens`（加密令牌）、`consultant_chats`（群成员缓存）。
+> 云版已在线：浏览器打开 http://47.110.93.137:3100 -> 飞书授权 -> 自己的工作台。
+> 以下是在自己机器上跑的步骤，照着每条命令敲就行，不需要会写代码。
 
-## 关键纪律（改动时必读）
+### 1. 装 Node.js（只要一次）
 
-1. **凭据**：app_secret 只走 `BRAINX_FEISHU_APP_SECRET` 环境变量；用户令牌 AES-GCM 入库，
-   密钥 = `data/.secret`；任何日志/响应不出令牌；打包必须排除 `.env` 和 `data/.secret`。
-2. **按人隔离**：群消息只用本人令牌读本人实际所在群（im/v1/chats ∩ BRIDGE_CHATS）；
-   API 跨人一律 404；SSE 带 consultant_id 定向。
-3. **事实/关系分离**：桥接与 feishu 源只刷事实（relation=null）；关系只有两个来源——
-   fixture 策展（属主=felix，非属主同步不写）+ `relations.js` 推导（本人行 > 他人主做 >
-   团队池默认）。任何模块不得自行判定关系。
-4. **fail-closed**：不在花名册拒登；无完整快照不出推荐；令牌失效跳过该顾问不阻断他人。
-5. **lark-cli 会挂死**（fork 炸弹前科）：用户身份调用一律 45s 超时上限；直连 API 用
-   `AbortSignal.timeout(45000)`。推卡只走 `--as bot`，仅推本人，绝不推群。
-6. **数据语义**：`captured_at` = 事实最后变化时间（UPSERT 变化检测，禁回刷）；
-   `raw_json` 不出网；migrations 只增不改，按文件名记账。
-7. **MySQL 不适用**：本项目是 SQLite；但团队 RDS 纪律见 ttc 主仓 CLAUDE.md。
+本项目用 Node.js ≥ 22.5，核心功能**零 npm 依赖**（不用 `npm install`）。
 
-## 运行
+```bash
+node -v          # 必须 v22.5 以上；没有就去 https://nodejs.org 装 LTS 版
+```
+
+### 2. 拿到代码
+
+```bash
+git clone <仓库地址> brainx
+cd brainx
+```
+
+### 3. 配置飞书凭据（.env）
+
+仓库**不含** `.env`（里面有飞书 App Secret，不进版本库）。先复制模板：
+
+```bash
+cp .env.example .env
+```
+
+打开 `.env`，填上飞书应用 secret（飞书开发者后台 -> 凭证与基础信息 -> App Secret）：
+
+```ini
+BRAINX_FEISHU_APP_SECRET=你的飞书App Secret
+BRAINX_BASE_URL=http://127.0.0.1:3000
+```
+
+> 没有这一项飞书登录不可用。只想看界面、不登录，可加 `BRAINX_DEV_AUTH=1`（离线演示后门）。
+
+### 4. 启动
+
+```bash
+node src/server.js          # 启动，浏览器打开 http://127.0.0.1:3000
+```
+
+浏览器打开 -> 飞书授权登录 -> 进自己的工作台。数据库 `data/brainx.db` 首次运行自动建表，不用手动建。
+
+> 桥接器（每 3 分钟拉飞书新数据）依赖 `lark-cli`。没装也能跑，只是日志会报 sync_error、
+> 拉不到飞书新数据，页面本身正常。彻底关掉桥接：`BRAINX_BRIDGE_OFF=1 node src/server.js`。
+
+### 5. 跑测试（确认环境 OK）
+
+```bash
+npm test                    # 51/51 全绿，约 3 秒
+```
+
+### 6. 常驻后台（可选）
+
+第 4 步是前台运行，关终端就停。要开机自启 / 崩溃拉起：
 
 ```bash
 npm test                     # 72/72，约 3 秒（Node ≥22；v22 用 node --test "tests/*.test.mjs"）
@@ -82,14 +114,26 @@ sh bin/install-launchd.sh    # macOS 常驻 → 127.0.0.1:3100
 # 服务器部署：rsync（include/exclude 规则，勿多源带尾斜杠！）→ systemctl restart brainx
 ```
 
-## 当前待办
+### 7. 阿里云 RDS MySQL 人才库（可选，不用人才库可跳过）
 
-- ~~felix/york 登录被拦~~（2026-08-11 已解决：清掉全部非白名单待发布权限，
-  1.0.1 免审核发布，可用范围 = mia/felix/york 三人）。
-- 三人各自打开云版重登一次激活按人消息同步（工作台头部胶囊引导）；
-  mia 需在工作台「完善方向档案」填方向关键词（york 已数据播种）。
-- Felix 提供 TalentMatch ATS 职位导出（project_id/Pipeline/HC）→ 替换 P-FIX 占位 ID。
-- brainx.yorkteam.cn 子域名 + HTTPS（现有证书无泛域名）。
-- ~~mia/york 推荐池为空~~（2026-08-10 框架修正：relations.js 推导层，团队池默认 TEAM_SHARED）。
-- 关系推导目前是团队池粗粒度默认（不知道团队池里「主做」列对应谁）；
-  ATS 导出落地后按主做信息细化 OTHER_CONSULTANT 判定。
+只有用到 talent / tag / resume / position / match_record / user 等 7 张表才需要。
+Node 没有内置 MySQL 客户端，需装唯一一个依赖：
+
+```bash
+npm install mysql2
+```
+
+在 `.env` 补三行（RDS 账号 / 密码 / 库名），并在阿里云 RDS 控制台把本机公网 IP 加进白名单：
+
+```ini
+BRAINX_MYSQL_USER=...
+BRAINX_MYSQL_PASSWORD=...
+BRAINX_MYSQL_DATABASE=brainx_talent
+```
+
+外网地址 `ttc-rds-public-0707.mysql.rds.aliyuncs.com:3306`（已在 `src/db.js` 写死默认值）。
+建表（一次即可，幂等可重复跑）：
+```bash
+node scripts/init-talent-schema.mjs   # 或 npm run init-talent
+```
+7 张表 DDL 在 `src/db.js` 的 `TALENT_DDL`。完整 5 步接入说明见 `src/db.js` 末尾注释。

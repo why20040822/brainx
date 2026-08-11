@@ -6,6 +6,9 @@
   "engines": {
     "node": ">=22.5"
   },
+  "dependencies": {
+    "mysql2": "^3.23.3"
+  },
   "scripts": {
     "sync": "node bin/brainx-sync.mjs",
     "recommend": "node bin/brainx-recommend.mjs",
@@ -13,6 +16,7 @@
     "push": "node bin/brainx-push.mjs",
     "web": "node src/server.js",
     "fixture": "node scripts/build_fixture.mjs",
+    "init-talent": "node scripts/init-talent-schema.mjs",
     "test": "node --test --test-force-exit"
   },
   "bin": {
