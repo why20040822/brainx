@@ -310,7 +310,10 @@ export function createServer(db = openDb(), deps = {}) {
       if (path === '/login') path = '/login.html';
       const fp = normalize(join(PUBLIC, path));
       if (isPathInside(PUBLIC, fp) && existsSync(fp) && statSync(fp).isFile()) {
-        res.writeHead(200, { 'Content-Type': MIME[extname(fp)] || 'application/octet-stream' });
+        // no-cache：零构建前端没有指纹文件名，不加缓存头时旧 tab 会长期显示旧界面
+        //（2026-08-11 实锤：部署新代码后用户浏览器仍渲染重启前加载的旧 JS）
+        res.writeHead(200, { 'Content-Type': MIME[extname(fp)] || 'application/octet-stream',
+                             'Cache-Control': 'no-cache, must-revalidate' });
         return res.end(readFileSync(fp));
       }
     }
