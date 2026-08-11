@@ -6,17 +6,23 @@
   "engines": {
     "node": ">=22.5"
   },
+  "dependencies": {
+    "mysql2": "^3.23.3"
+  },
   "scripts": {
     "sync": "node bin/brainx-sync.mjs",
+    "adapter": "node bin/brainx-adapter.mjs",
     "recommend": "node bin/brainx-recommend.mjs",
     "replay": "node bin/brainx-replay.mjs",
     "push": "node bin/brainx-push.mjs",
     "web": "node src/server.js",
     "fixture": "node scripts/build_fixture.mjs",
+    "init-talent": "node scripts/init-talent-schema.mjs",
     "test": "node --test --test-force-exit"
   },
   "bin": {
     "braintex-local-sync": "bin/brainx-sync.mjs",
+    "braintex-local-adapter": "bin/brainx-adapter.mjs",
     "braintex-local-recommend": "bin/brainx-recommend.mjs",
     "braintex-local-replay": "bin/brainx-replay.mjs",
     "braintex-local-push": "bin/brainx-push.mjs",
