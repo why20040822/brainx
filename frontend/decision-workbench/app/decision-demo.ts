@@ -40,9 +40,9 @@ export const seedDecisionJobs:DecisionJob[]=[
 export const seedSync:SyncStatus={state:"READY",updatedAt:"11:28",rowsRead:37,rowsExpected:37};
 export const seedAuth:AuthStatus={consultant:"Felix",authorized:true,needsReauth:false};
 export const seedNotifications:Notification[]=[
- {id:"daily",kind:"DAILY_TOP3",title:"今日 Top 3 已生成",detail:"Nooklab、科漫智能、CurioSea 等待判断",jobId:"PRJ-1829",read:false},
- {id:"commit",kind:"COMMITMENT",title:"1 个承接需要处理",detail:"科漫智能关注后仍未接单",jobId:"PRJ-1674",read:false},
- {id:"sync",kind:"SYNC_ALERT",title:"同步状态正常",detail:"37 / 37 条职位事实已进入本轮快照",read:true},
+ {id:"daily",kind:"DAILY_TOP3",title:"三方向 Top 3 已生成",detail:"投放、增长负责人、市场负责人等待判断",jobId:"JU87P01",read:false},
+ {id:"commit",kind:"COMMITMENT",title:"2 个承接需要处理",detail:"39-AI 与科漫智能仍有下一动作",jobId:"JVS2PHH",read:false},
+ {id:"sync",kind:"SYNC_ALERT",title:"同步状态正常",detail:"当前完整快照已进入本轮职位判断",read:true},
 ];
 
 export const actionLabel:Record<EngagementCommand,string>={WATCH:"关注",UNWATCH:"取消关注",ACCEPT:"接单",DISMISS:"暂不考虑",RELEASE:"释放",COMPLETE:"完成"};
