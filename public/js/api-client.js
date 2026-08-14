@@ -32,6 +32,9 @@ export const api = {
   dismissReasons: () => req('GET', '/api/v1/dismiss-reasons'),
   profile: () => req('GET', '/api/v1/profile'),
   saveProfile: (payload) => req('PUT', '/api/v1/profile', payload),
+  ttcConnect: () => req('GET', '/api/v1/ttc/connect'),
+  ttcSave: (jwt) => req('PUT', '/api/v1/ttc/connect', { jwt }),
+  ttcDisconnect: () => req('DELETE', '/api/v1/ttc/connect'),
   logout: () => req('DELETE', '/api/v1/session'),
 };
 

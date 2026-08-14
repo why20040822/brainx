@@ -20,6 +20,9 @@ import { makeAutoPush } from './autopush.js';
 import { saveUserTokens, tokenStatus } from './feishu.js';
 import { jobVisibleTo } from './visibility.js';
 import { relationOf } from './relations.js';
+import { validateJwt, saveTtcToken, ttcAuthStatus } from './ttcsdk/auth.js';
+import { quota as ttcQuota } from './ttcsdk/user.js';
+import { TtcApiError } from './ttcsdk/http.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
@@ -126,6 +129,7 @@ export function createServer(db = openDb(), deps = {}) {
                        rows_read: sync.rows_read, rows_expected: sync.rows_expected,
                        errors: JSON.parse(sync.errors || '[]') } : { state: 'EMPTY', updated_at: null },
         feishu_auth: tokenStatus(db, cid), // {authorized, needs_reauth}——头胶囊提示重登
+        ttc_auth: ttcAuthStatus(db, cid),  // TTC 系统托管状态（连接胶囊；绝不出 JWT 本体）
         current_policy_version: run?.run?.policy_version || null,
         watched_count: c.watched_count, watched_limit: c.watched_limit,
         accepted_count: c.accepted_count, cooldown_count: 0,
@@ -233,6 +237,30 @@ export function createServer(db = openDb(), deps = {}) {
       if (!b) return err(res, 400, 'BAD_JSON', '请求体不是合法 JSON');
       const out = updateProfile(db, cid, b);
       json(res, out.ok ? 200 : (out.status || 400), out);
+    },
+
+    // TTC 系统凭据托管（轻无感：~60 天粘贴一次自己的 ottin-jwt-token-v2）。
+    // 只许本人；JWT 先本地校验再活验证（调一次 user/quota）才落库；永不回显。
+    'GET /api/v1/ttc/connect': (req, res, cid) => json(res, 200, ttcAuthStatus(db, cid)),
+    'PUT /api/v1/ttc/connect': async (req, res, cid) => {
+      const b = await body(req);
+      const jwt = String(b?.jwt || '').trim();
+      if (!jwt) return err(res, 400, 'EMPTY', '没收到 JWT');
+      if (jwt.length > 8192) return err(res, 400, 'TOO_LONG', '长度异常，确认只复制了 token 值');
+      let meta;
+      try { meta = validateJwt(jwt); } catch (e) { return err(res, 422, 'BAD_JWT', e.message); }
+      try { await ttcQuota(jwt); } catch (e) {
+        if (e instanceof TtcApiError && e.authInvalid) {
+          return err(res, 401, 'TTC_AUTH_INVALID', 'JWT 无效或已失效——回 TTC 系统（app.ttcadvisory.com）重新登录后再复制');
+        }
+        return err(res, 502, 'TTC_UNREACHABLE', '连不上 TTC 接口，稍后再试');
+      }
+      saveTtcToken(db, cid, jwt, meta);
+      json(res, 200, { ok: true, ...ttcAuthStatus(db, cid) });
+    },
+    'DELETE /api/v1/ttc/connect': (req, res, cid) => {
+      db.prepare('DELETE FROM ttc_tokens WHERE consultant_id=?').run(cid);
+      json(res, 200, { ok: true, connected: false });
     },
 
     // SSE：桥接器有变化时推 sync/recommend/sync_error；25s 心跳保活

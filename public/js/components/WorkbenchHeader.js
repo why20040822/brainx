@@ -4,7 +4,7 @@ import { REL_LABEL } from '../types.js';
 const SYNC_LABEL = { READY: '已同步', RUNNING: '同步中', INCOMPLETE: '本次同步不完整',
   AUTH_EXPIRED: 'TTC 登录失效', ERROR: '同步失败', EMPTY: '尚未同步' };
 
-export function renderHeader(el, { consultant_id, sync, feishu_auth, profile }, { onSync, onLogout, onProfile }) {
+export function renderHeader(el, { consultant_id, sync, feishu_auth, profile, ttc_auth }, { onSync, onLogout, onProfile, onTtc }) {
   el.innerHTML = '';
   const brand = document.createElement('h1');
   brand.className = 'wb-brand';
@@ -22,6 +22,22 @@ export function renderHeader(el, { consultant_id, sync, feishu_auth, profile }, 
   profileBtn.textContent = empty ? '完善方向档案' : `档案（${profile.profile_keywords.length} 词）`;
   profileBtn.title = empty ? '推荐的方向匹配维度需要你的方向关键词' : profile.profile_keywords.join(' / ');
   profileBtn.addEventListener('click', onProfile);
+
+  // TTC 系统连接胶囊（轻无感托管）：未连接/临期醒目；正常显示连接身份，点击可换绑/断开
+  const ttcBtn = document.createElement('button');
+  if (!ttc_auth?.connected) {
+    ttcBtn.className = 'btn btn-quiet auth-warn';
+    ttcBtn.textContent = '连接 TTC 系统';
+    ttcBtn.title = '连接后按你的 TTC 权限读取客户/职位（粘贴一次凭据，约 60 天有效）';
+  } else if (ttc_auth.needs_reauth || ttc_auth.expiring_soon) {
+    ttcBtn.className = 'btn btn-quiet auth-warn';
+    ttcBtn.textContent = 'TTC 凭据临期 · 重新连接';
+  } else {
+    ttcBtn.className = 'btn btn-quiet';
+    ttcBtn.textContent = `TTC·${ttc_auth.ttc_user_name || '已连接'}`;
+    ttcBtn.title = `凭据有效期至 ${String(ttc_auth.expires_at || '').slice(0, 10)}`;
+  }
+  ttcBtn.addEventListener('click', onTtc);
 
   const pill = document.createElement('span');
   pill.className = 'sync-pill';
@@ -52,5 +68,5 @@ export function renderHeader(el, { consultant_id, sync, feishu_auth, profile }, 
   logoutBtn.textContent = '退出';
   logoutBtn.addEventListener('click', onLogout);
 
-  el.append(brand, actor, profileBtn, spacer, ...(authLink ? [authLink] : []), pill, syncBtn, logoutBtn);
+  el.append(brand, actor, profileBtn, ttcBtn, spacer, ...(authLink ? [authLink] : []), pill, syncBtn, logoutBtn);
 }

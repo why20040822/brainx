@@ -29,8 +29,8 @@ async function refresh() {
 
 function renderAll() {
   renderHeader($('wb-header'), { consultant_id: model.consultant_id, sync: model.sync,
-    feishu_auth: model.feishu_auth, profile }, {
-    onSync: doSync, onLogout: doLogout, onProfile: editProfile,
+    feishu_auth: model.feishu_auth, profile, ttc_auth: model.ttc_auth }, {
+    onSync: doSync, onLogout: doLogout, onProfile: editProfile, onTtc: ttcConnect,
   });
   renderQueue({
     queueEl: $('queue'), expandEl: $('expand-slot'), subEl: $('queue-sub'),
@@ -196,6 +196,41 @@ function editProfile() {
   });
   document.getElementById('pf-kws').value = kws;
   document.getElementById('pf-note').value = profile?.profile_note || '';
+}
+
+/* ── TTC 系统连接（轻无感：~60 天粘贴一次凭据）── */
+const TTC_BOOKMARKLET = "javascript:void(navigator.clipboard.writeText(localStorage.getItem('ottin-jwt-token-v2')||'').then(()=>alert('TTC 凭据已复制，回 Brain X 粘贴')))";
+function ttcConnect() {
+  const st = model?.ttc_auth || {};
+  const statusLine = st.connected
+    ? `<p>当前已连接为：<strong>${st.ttc_user_name || ''}</strong>（有效期至 ${String(st.expires_at || '').slice(0, 10)}）。粘贴新凭据即换绑。</p>`
+    : '';
+  showModal({
+    title: '连接 TTC 客户管理系统',
+    bodyHTML: `${statusLine}
+      <p class="muted" style="margin-top:0">两步走（约 30 秒，每 ~60 天一次）：</p>
+      <ol style="margin:4px 0 10px;padding-left:20px;line-height:1.9">
+        <li>在浏览器打开 <code>app.ttcadvisory.com</code>（保持你已登录），点这个书签：
+          <a class="btn" style="padding:2px 10px" href='${TTC_BOOKMARKLET}'>复制TTC凭据</a>
+          <span class="muted">（建议先拖到书签栏，以后点一下就行）</span></li>
+        <li>回来粘贴到下面：</li>
+      </ol>
+      <textarea id="ttc-jwt" class="btn" style="width:100%;min-height:76px;font-family:monospace" placeholder="粘贴 ottin-jwt-token-v2 的值" aria-label="TTC 凭据"></textarea>
+      <p class="muted" style="font-size:12px">只存在你自己的工作台后端（AES 加密），不会展示给任何人；凭据内嵌你的飞书授权，请勿发给他人。</p>`,
+    okText: st.connected ? '换绑保存' : '验证并连接', okPrimary: true,
+    collect: () => {
+      const v = document.getElementById('ttc-jwt').value.trim();
+      if (!v) { live('没粘贴内容'); return null; }
+      return v;
+    },
+    onOk: async (jwt) => {
+      try {
+        const out = await api.ttcSave(jwt);
+        live(`TTC 已连接：${out.ttc_user_name || '未知身份'}（有效期至 ${String(out.expires_at || '').slice(0, 10)}）`);
+        await refresh();
+      } catch (e) { live(`连接失败：${e.message}`); }
+    },
+  });
 }
 
 /* ── 同步 / 退出 ── */

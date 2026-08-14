@@ -16,14 +16,14 @@ import { appAccessToken } from './oauth.js';
 
 const KEY = () => createHash('sha256').update(sessionSecret()).digest(); // 32B
 
-const enc = (plain) => {
+export const enc = (plain) => {
   const iv = randomBytes(12);
   const c = createCipheriv('aes-256-gcm', KEY(), iv);
   const ct = Buffer.concat([c.update(String(plain), 'utf8'), c.final()]);
   return `v1.${iv.toString('hex')}.${c.getAuthTag().toString('hex')}.${ct.toString('hex')}`;
 };
 
-const dec = (blob) => {
+export const dec = (blob) => {
   const [v, iv, tag, ct] = String(blob || '').split('.');
   if (v !== 'v1' || !iv || !tag || !ct) throw new Error('bad_token_blob');
   const d = createDecipheriv('aes-256-gcm', KEY(), Buffer.from(iv, 'hex'));
