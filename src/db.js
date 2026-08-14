@@ -112,10 +112,10 @@ export const MYSQL_CONFIG = {
   user: process.env.BRAINX_MYSQL_USER || '',         // TODO .env 填 RDS 账号
   password: process.env.BRAINX_MYSQL_PASSWORD || '', // TODO .env 填 RDS 密码
   database: process.env.BRAINX_MYSQL_DATABASE || '', // TODO .env 填库名（如 brainx_talent）
-  charset: 'utf8mb4',
+  charset: process.env.BRAINX_MYSQL_CHARSET || 'utf8mb4',
   // 连接池（Druid 等价：connectionLimit≈maxActive，waitForConnections+queueLimit≈排队策略）
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: Number(process.env.BRAINX_MYSQL_POOL_SIZE) || 10,
   queueLimit: 0,
   connectTimeout: 10000,
   enableKeepAlive: true,

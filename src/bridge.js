@@ -22,6 +22,9 @@ import { runSync } from './sync.js';
 import { getValidAccessToken, listUserChats, listChatMessages, listBitableRecords } from './feishu.js';
 import { BITABLE_BASE, BITABLE_TABLE, deriveProjectId, flatLark, flatApi, parseBitableRecord } from './bitable.js';
 import { larkProfileArgs } from './env.js';
+import { getValidTtcJwt, markTtcReauth } from './ttcsdk/auth.js';
+import { searchAll, toJobRow } from './ttcsdk/job.js';
+import { TtcApiError } from './ttcsdk/http.js';
 
 // deriveProjectId 权威已迁 bitable.js；此处 re-export 保持既有 import 不破
 export { deriveProjectId };
@@ -199,6 +202,40 @@ export async function bridgeOnce(db, { consultant_ids, execImpl = lark, api = { 
       syncs.push({ consultant_id: cid, sync_id: s.sync_id, complete: s.complete,
                    rows: s.rows_read, errors: s.errors.length });
     }
+  }
+
+  // 1.5) TTC 系统职位（真 project_id/HC/Pipeline）：每人用自己的托管 JWT 取权限视图，
+  // 合并去重为团队池。has_permission=false 的行（脱敏视图）不采。未托管者跳过不阻断；
+  // 凭据失效 → markTtcReauth（前端胶囊提示重连），不阻断他人。
+  if (api) {
+    const union = new Map();
+    const ttcErrs = [];
+    for (const cid of cids) {
+      const jwt = getValidTtcJwt(db, cid);
+      if (!jwt) continue;
+      try {
+        const jobs = await searchAll(jwt, {}, fetchImpl);
+        for (const j of jobs) {
+          if (!j.unique_id || j.has_permission === false) continue;
+          if (!union.has(j.unique_id)) union.set(j.unique_id, toJobRow(j));
+        }
+      } catch (e) {
+        if (e instanceof TtcApiError && e.authInvalid) markTtcReauth(db, cid);
+        ttcErrs.push(`${cid}:${String(e.message).slice(0, 60)}`);
+      }
+    }
+    if (union.size) {
+      const ttcPayload = { as_of: now(), jobs: [...union.values()] };
+      for (const cid of cids) {
+        const prev = db.prepare(`SELECT input_hash FROM sync_runs
+          WHERE consultant_id=? AND source='ttc' ORDER BY started_at DESC LIMIT 1`).get(cid);
+        const s = runSync(db, { source: 'ttc', consultant_id: cid, payload: ttcPayload });
+        if (!prev || prev.input_hash !== s.input_hash) changed = true;
+        syncs.push({ consultant_id: cid, sync_id: s.sync_id, complete: s.complete,
+                     rows: s.rows_read, errors: s.errors.length });
+      }
+    }
+    if (ttcErrs.length) errors.push(`ttc:${ttcErrs.join('|')}`);
   }
 
   // 2) 群消息：每个顾问用自己的令牌读自己所在的群（隔离的本意——无令牌=无消息）

@@ -99,14 +99,15 @@ export function runSync(db, { source = 'fixture', consultant_id = 'felix', dry_r
            JSON.stringify(errors), input_hash, t0, now());
 
     // captured_at 语义 = 「事实最后变化时间」，不是「最后同步时间」：
-    // 九个事实字段任一变化（IS NOT = null 安全不等）才前进，否则保留原值。
+    // 十一个事实字段任一变化（IS NOT = null 安全不等）才前进，否则保留原值。
     const upsert = db.prepare(`INSERT INTO job_facts
-      (project_id, company, role, city, pipeline, hc, active_state, priority, notes, company_type, source_url, captured_at, sync_id, raw_json, updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      (project_id, company, role, city, pipeline, hc, active_state, priority, notes, company_type, owner_name, owner_unique_id, source_url, captured_at, sync_id, raw_json, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(project_id) DO UPDATE SET
         company=excluded.company, role=excluded.role, city=excluded.city,
         pipeline=excluded.pipeline, hc=excluded.hc, active_state=excluded.active_state,
         priority=excluded.priority, notes=excluded.notes, company_type=excluded.company_type,
+        owner_name=excluded.owner_name, owner_unique_id=excluded.owner_unique_id,
         source_url=excluded.source_url,
         captured_at=CASE WHEN
             job_facts.company      IS NOT excluded.company      OR
@@ -117,7 +118,8 @@ export function runSync(db, { source = 'fixture', consultant_id = 'felix', dry_r
             job_facts.active_state IS NOT excluded.active_state OR
             job_facts.priority     IS NOT excluded.priority     OR
             job_facts.notes        IS NOT excluded.notes        OR
-            job_facts.company_type IS NOT excluded.company_type
+            job_facts.company_type IS NOT excluded.company_type OR
+            job_facts.owner_name   IS NOT excluded.owner_name
           THEN excluded.captured_at ELSE job_facts.captured_at END,
         sync_id=excluded.sync_id, raw_json=excluded.raw_json, updated_at=excluded.updated_at`);
     const upsertRel = db.prepare(`INSERT INTO job_memberships
@@ -130,6 +132,7 @@ export function runSync(db, { source = 'fixture', consultant_id = 'felix', dry_r
     for (const j of valid) {
       upsert.run(j.project_id, j.company, j.role, j.city, j.pipeline, j.hc,
                  j.active_state, j.priority ?? null, j.notes ?? null, j.company_type ?? null,
+                 j.owner_name ?? null, j.owner_unique_id ?? null,
                  j.source_url, j.captured_at || as_of, sync_id,
                  JSON.stringify(j), now());
       if (j.relation && writeRels) {
