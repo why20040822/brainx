@@ -19,7 +19,7 @@
 import { execFileSync } from 'node:child_process';
 import { now } from './db.js';
 import { runSync } from './sync.js';
-import { getValidAccessToken, listUserChats, listChatMessages, listBitableRecords } from './feishu.js';
+import { getValidAccessToken, listUserChats, listChatMessages, listBitableRecords, markReauth } from './feishu.js';
 import { BITABLE_BASE, BITABLE_TABLE, deriveProjectId, flatLark, flatApi, parseBitableRecord } from './bitable.js';
 import { larkProfileArgs } from './env.js';
 import { getValidTtcJwt, markTtcReauth } from './ttcsdk/auth.js';
@@ -262,7 +262,10 @@ export async function bridgeOnce(db, { consultant_ids, execImpl = lark, api = { 
           const msgs = await fetchNewMessagesApi(db, cid, chat.chat_id, token, fetchImpl);
           const { inserted, matched } = ingestMessages(db, chat.chat_id, msgs, cid);
           newMessages += inserted; matchedTotal += matched;
-        } catch (e) { errors.push(`msgs:${cid}:${chat.chat_id.slice(0, 10)}`); }
+        } catch (e) {
+          if (String(e.message).includes('230027')) markReauth(db, cid); // 缺 scope（如 group_msg:get_as_user 新加）→ 点亮重登胶囊
+          errors.push(`msgs:${cid}:${chat.chat_id.slice(0, 10)}`);
+        }
       }
 
       // 2.5) 驾驶舱群（职位活跃判定数据源）：该顾问所在的驾驶舱群轮流分批拉取，
@@ -289,7 +292,10 @@ export async function bridgeOnce(db, { consultant_ids, execImpl = lark, api = { 
             const msgs = await fetchNewMessagesApi(db, cid, chatId, token, fetchImpl);
             const { inserted, matched } = ingestMessages(db, chatId, msgs, cid);
             newMessages += inserted; matchedTotal += matched;
-          } catch (e) { errors.push(`cockpit:${cid}:${chatId.slice(0, 10)}`); }
+          } catch (e) {
+            if (String(e.message).includes('230027')) markReauth(db, cid);
+            errors.push(`cockpit:${cid}:${chatId.slice(0, 10)}`);
+          }
           stAct.run(chatId, chatId, cutoff, chatId);
         }
         db.prepare(`INSERT INTO bridge_cursor (source, checkpoint, updated_at) VALUES (?,?,?)

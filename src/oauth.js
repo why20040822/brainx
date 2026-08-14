@@ -26,6 +26,7 @@ export const OAUTH_SCOPES = process.env.BRAINX_FEISHU_SCOPES || [
   'auth:user.id:read',
   'contact:user.base:readonly',
   'im:message:readonly',
+  'im:message.group_msg:get_as_user', // 群消息读取的「以用户身份」细分 scope（230027 实锤：readonly 单独不够）
   'im:chat:read',
   'im:chat.members:read',
   'base:app:read',
