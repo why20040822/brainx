@@ -53,11 +53,10 @@ export function startScheduler(db, { log = console.log } = {}) {
       if (!inWindow) return;
       const consultants = db.prepare(`SELECT consultant_id, open_id FROM consultants
         WHERE active=1 AND open_id IS NOT NULL AND open_id != ''`).all();
+      log(`[scheduler] 进入推送窗口 ${slotKey}，对象 ${consultants.length} 人`); // 窗口可观测性（2026-08-14 19:00 未触发排查）
       for (const c of consultants) {
         const out = pushSlotFor(db, c.consultant_id, c.open_id, slotKey, { send: true });
-        if (out && out.status !== 'SKIPPED_DUPLICATE') {
-          log(`[scheduler] ${slotKey} 已推送 ${c.consultant_id}: ${out.status}`);
-        }
+        log(`[scheduler] ${slotKey} ${c.consultant_id}: ${out ? out.status : 'null(无推荐轮)'}`);
       }
     } catch (e) { log(`[scheduler] tick 异常: ${String(e.message || e).slice(0, 120)}`); }
   };
