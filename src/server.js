@@ -23,6 +23,7 @@ import { relationOf } from './relations.js';
 import { validateJwt, saveTtcToken, ttcAuthStatus } from './ttcsdk/auth.js';
 import { quota as ttcQuota } from './ttcsdk/user.js';
 import { TtcApiError } from './ttcsdk/http.js';
+import { radarRows, clientRows } from './radar.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
@@ -224,6 +225,10 @@ export function createServer(db = openDb(), deps = {}) {
     },
 
     'GET /api/v1/dismiss-reasons': (req, res) => json(res, 200, { items: DISMISS_REASONS }),
+
+    // 职位雷达与客户洞察（fail-closed 可见性；只呈现事实，不补造运营指标）
+    'GET /api/v1/radar': (req, res, cid) => json(res, 200, { items: radarRows(db, cid) }),
+    'GET /api/v1/clients': (req, res, cid) => json(res, 200, { items: clientRows(db, cid) }),
 
     // 我的档案（方向画像）：只许读/改自己；保存后下一轮 recommend 即生效
     'GET /api/v1/profile': (req, res, cid) => {
