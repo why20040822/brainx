@@ -6,6 +6,7 @@ import { runSync } from '../src/sync.js';
 import { relationOf } from '../src/relations.js';
 import { toJobRow } from '../src/ttcsdk/job.js';
 import { saveTtcToken, validateJwt } from '../src/ttcsdk/auth.js';
+import { scoreJob } from '../src/scorer.js';
 import { bridgeOnce } from '../src/bridge.js';
 import { normalizeCompany, planRemap, applyRemap } from '../scripts/remap_project_ids.mjs';
 
@@ -108,3 +109,37 @@ test('remap：规范化/确定映射/歧义/事务执行', () => {
   assert.equal(db.prepare(`SELECT project_id FROM recommendations WHERE decision_id='d1'`).get().project_id, 'JRW5YJJ');
   assert.equal(db.prepare(`SELECT COUNT(*) n FROM job_facts WHERE project_id='P-FIX-AAAA1111'`).get().n, 0);
 });
+
+/* ⑫ 0013 群活跃：精确归因 + 活跃基底参与评分 */
+test('驾驶舱群消息：单职位群精确归因（不依赖公司名）', () => {
+  runSync(db, { source: 'ttc', consultant_id: 'mia', payload: { as_of: '2026-08-14', jobs: [
+    { ...toJobRow(TTC_JOB), project_id: 'JCHAT1', company: '盲区公司', chat_id: 'oc_cockpit1' },
+  ] } });
+  const { ingestMessages } = require_bridge();
+  const out = ingestMessages(db, 'oc_cockpit1', [
+    { message_id: 'm1', sender: { name: '某人' }, msg_type: 'text', content: '没有公司名的纯讨论消息', create_time: '2026-08-14 10:00' },
+  ], 'mia');
+  assert.equal(out.inserted, 1);
+  assert.equal(out.matched, 1); // 文本无公司名也归因成功
+  const row = db.prepare(`SELECT matched_project_id FROM job_messages WHERE message_id='m1'`).get();
+  assert.equal(row.matched_project_id, 'JCHAT1');
+});
+
+test('scorer：群活跃基底——今日活跃 65 起，沉寂 30+ 天降 20', () => {
+  const ctx = { consultant_id: 'mia', profile_keywords: [], historical_texts: [],
+    watched_count: 0, accepted_count: 0, outcomes_avg: null, now: '2026-08-14T00:00:00.000Z' };
+  const mk = (chat_last_at, captured_at = '2026-07-01') => ({ project_id: 'JX', company: '甲', role: '算法', pipeline: 'Sourcing×1',
+    active_state: 'OPEN', captured_at, priority: null, chat_last_at, chat_msgs_7d: 3 });
+  const act = (j) => scoreJob(j, 'TEAM_SHARED', ctx).breakdown.find((d) => d.dim === 'activity').score;
+  // 今日群活跃（10 小时前）+ pipeline 25 + 事实今日新鲜 25 → 65+25+25=115 → 封顶 100
+  assert.equal(act(mk('2026-08-13 22:00', '2026-08-14')), 100);
+  // 44 天无群消息 → 基底 20；pipeline 25；事实 44 天前（>30d）+0 → 45
+  assert.equal(act(mk('2026-07-01 10:00')), 45);
+  // 无群数据 → 原路径 50+25+0=75
+  assert.equal(act(mk(null)), 75);
+});
+
+// bridge 模块的 CJS/ESM 便捷引入（文件已是 ESM，这里直接静态 import 亦可；
+// 用函数包一层只为测试块就近可读）
+import { ingestMessages as _ingestMessages } from '../src/bridge.js';
+function require_bridge() { return { ingestMessages: _ingestMessages }; }

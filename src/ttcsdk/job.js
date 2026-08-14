@@ -41,6 +41,7 @@ export function toJobRow(j) {
     company_type: null,                   // industry_tags 形态未稳定，暂不映射（raw_json 有全量）
     owner_name: j.managers?.[0]?.name || null,
     owner_unique_id: j.managers?.[0]?.unique_id || null,
+    chat_id: j.group_chat?.id || null,      // 驾驶舱群（活跃判定数据源；一群可挂多职位）
     relation: null,
     source_url: `ttc://job/${j.unique_id}`,
     captured_at: j.update_time ? new Date(Number(j.update_time)).toISOString() : undefined,

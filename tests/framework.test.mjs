@@ -157,7 +157,8 @@ test('migrations：schema_migrations 逐文件记账，重开不重跑', () => {
   assert.deepEqual(rows, ['0001_init.sql', '0002_push_log.sql', '0003_consultants.sql',
                           '0004_bridge.sql', '0005_per_user.sql', '0006_framework.sql',
                           '0007_bitable_fields.sql', '0008_agent12.sql', '0009_switch_app.sql',
-                          '0010_ttc_tokens.sql', '0011_ttc_owner.sql', '0012_drop_placeholder.sql']);
+                          '0010_ttc_tokens.sql', '0011_ttc_owner.sql', '0012_drop_placeholder.sql',
+                          '0013_chat_activity.sql']);
 });
 
 const TMPDB = join(tmpdir(), `brainx-fw-${process.pid}.db`);
@@ -174,7 +175,7 @@ test('migrations：旧库 user_version=2 兼容——前 2 个文件标记已应
   legacy.close();
   const reopened = openDb(TMPDB);
   const rows = reopened.prepare('SELECT name FROM schema_migrations ORDER BY name').all().map((r) => r.name);
-  assert.equal(rows.length, 12); // 全部记账
+  assert.equal(rows.length, 13); // 全部记账
   const view = reopened.prepare(`SELECT sql FROM sqlite_master WHERE type='view' AND name='current_engagement'`).get();
   assert.match(view.sql, /VIEWED/); // 0006 新视图已应用（含 VIEWED 推导）
   // 0007 扩列已生效

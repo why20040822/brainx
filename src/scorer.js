@@ -62,6 +62,9 @@ function daysSince(iso, nowIso) {
   return (Date.parse(nowIso) - Date.parse(iso)) / 86400000;
 }
 
+/** chat_last_at 是 'YYYY-MM-DD HH:mm'（Asia/Shanghai 墙钟，fromMsg 产出）→ 显式 +08:00 解析。 */
+const chatTs = (s) => Date.parse(String(s).replace(' ', 'T') + ':00+08:00');
+
 /** 探索位：确定性 md5 排序，当日该顾问的后 10% 职位得探索分 100，其余 50。 */
 export function explorationScore(project_id, consultant_id, dayIso) {
   const h = createHash('md5').update(`${project_id}|${dayIso.slice(0, 10)}|${consultant_id}`).digest('hex');
@@ -81,15 +84,23 @@ export function scoreJob(job, relation, ctx) {
   dims.direction = kwOverlap(text, ctx.profile_keywords);
 
   // 活跃度 20%：状态 + 优先级/pipeline + 新鲜度
-  // 盘点源（Bitable）有结构化 priority（0007 起）；fixture 行用 pipeline 有无近似
+  // 盘点源（Bitable）有结构化 priority（0007 起）；fixture 行用 pipeline 有无近似。
+  // 0013 起：有驾驶舱群活跃数据的职位以「群活跃」为基底——今天还在聊的职位才是真活跃；
+  // 30 天无消息的 OPEN 职位基底降到 20（活跃假象破除）；无群数据走原逻辑。
   const PRIORITY_BOOST = { HIGH: 25, NEW: 15, NORMAL: 10, STANDBY: 0 };
   let act = null;
   if (job.active_state === 'OPEN') {
-    act = 50;
+    let base = 50;
+    if (job.chat_last_at) {
+      const cd = (Date.parse(ctx.now) - chatTs(job.chat_last_at)) / 86400000;
+      base = cd <= 1 ? 65 : cd <= 3 ? 60 : cd <= 7 ? 55 : cd <= 14 ? 45 : cd <= 30 ? 35 : 20;
+    }
+    act = base;
     if (job.priority != null) act += PRIORITY_BOOST[job.priority] ?? 0;
     else if (job.pipeline) act += 25;
     const d = daysSince(job.captured_at, ctx.now);
     act += d <= 1 ? 25 : d <= 7 ? 18 : d <= 30 ? 8 : 0;
+    if (act > 100) act = 100;
   }
   dims.activity = act;
 
@@ -151,7 +162,7 @@ export function explain(job, relation, scored, ctx) {
   const relLabel = { MY_JOB: '我的职位', PRIMARY_PM: '我是主 PM', TEAM_SHARED: '团队共享', OTHER_CONSULTANT: '其他顾问主做' }[relation] || relation;
   reasons.push(`关系：${relLabel}${job.pipeline ? `；${job.pipeline}` : ''}`);
   if (b.direction != null) reasons.push(`方向匹配 ${b.direction} 分：与你画像关键词（${ctx.profile_keywords.slice(0, 3).join('/')}等）的重合度`);
-  if (b.activity != null) reasons.push(`活跃度 ${b.activity} 分：状态 ${job.active_state}${job.priority ? `，优先级${PRIORITY_LABEL[job.priority] || job.priority}` : job.pipeline ? '，Pipeline 有进展记录' : ''}，最近变化 ${String(job.captured_at).slice(0, 10)}`);
+  if (b.activity != null) reasons.push(`活跃度 ${b.activity} 分：状态 ${job.active_state}${job.priority ? `，优先级${PRIORITY_LABEL[job.priority] || job.priority}` : job.pipeline ? '，Pipeline 有进展记录' : ''}${job.chat_last_at ? `，群活跃 ${String(job.chat_last_at).slice(5, 16)}（近7天 ${job.chat_msgs_7d ?? 0} 条）` : ''}，最近变化 ${String(job.captured_at).slice(0, 10)}`);
   if (b.similarity != null && b.similarity > 0) reasons.push(`历史相似 ${b.similarity} 分：与你历史主做项目存在重合特征`);
   const risks = [];
   if ((ctx.watched_count || 0) >= 7) risks.push(`关注榜已 ${ctx.watched_count}/10，接近上限`);
