@@ -16,17 +16,17 @@ before(() => {
 
 test('花名册：种子幂等 + open_id 匹配 + 在线 upsert 不丢画像', () => {
   const n = seedRoster(db);
-  assert.equal(n, 3); // felix/mia/york（FLX 群实拉种子）
+  assert.equal(n, 6); // felix/mia/york + 2026-08-13 扩编 wendy/linda/shanon（York团队&人才库共创群）
   seedRoster(db);     // 再播一次不报错
   const all = listConsultants(db);
-  assert.equal(all.length, 3);
-  const felix = findByOpenId(db, 'ou_718417b9cb0db1e061fe8eae5c9ac95f');
+  assert.equal(all.length, 6);
+  const felix = findByOpenId(db, 'ou_3b30bc83806e157d9af0cd9188d7ab8d');
   assert.equal(felix.consultant_id, 'felix');
   assert.ok(felix.profile_keywords.includes('增长')); // 画像合并进来了
   // 在线刷新同一 open_id → 不重复、不覆盖画像
-  upsertMembers(db, [{ name: 'Felix 黄鑫', member_id: 'ou_718417b9cb0db1e061fe8eae5c9ac95f' }]);
-  assert.equal(listConsultants(db).length, 3);
-  assert.ok(findByOpenId(db, 'ou_718417b9cb0db1e061fe8eae5c9ac95f').profile_keywords.includes('增长'));
+  upsertMembers(db, [{ name: 'Felix 黄鑫', member_id: 'ou_3b30bc83806e157d9af0cd9188d7ab8d' }]);
+  assert.equal(listConsultants(db).length, 6);
+  assert.ok(findByOpenId(db, 'ou_3b30bc83806e157d9af0cd9188d7ab8d').profile_keywords.includes('增长'));
   assert.equal(findByOpenId(db, 'ou_unknown'), null);
 });
 
@@ -43,10 +43,10 @@ test('oauth state：签发/校验/篡改/过期', () => {
 });
 
 test('session：open_id 绑定 + 篡改拒绝', () => {
-  const t = signSession('felix', 'ou_718417b9cb0db1e061fe8eae5c9ac95f');
+  const t = signSession('felix', 'ou_3b30bc83806e157d9af0cd9188d7ab8d');
   const v = verifySession(t);
   assert.equal(v.consultant_id, 'felix');
-  assert.equal(v.open_id, 'ou_718417b9cb0db1e061fe8eae5c9ac95f');
+  assert.equal(v.open_id, 'ou_3b30bc83806e157d9af0cd9188d7ab8d');
   assert.equal(verifySession(t.replace('felix', 'miaxx')), null); // 改身份 → 签名不符
   assert.equal(verifySession('felix..12345.deadbeef'), null);
 });
@@ -54,7 +54,7 @@ test('session：open_id 绑定 + 篡改拒绝', () => {
 test('OAuth HTTP 流：authorize 302 + 回调换身份 + 花名册 fail-closed + dev 门禁', async () => {
   process.env.BRAINX_FEISHU_APP_SECRET = 'test-secret'; // 测试用假 secret，仅触发 configured
   delete process.env.BRAINX_DEV_AUTH;
-  const stubIdentity = { open_id: 'ou_1947320b06c2381f46ef8072e578be7a', name: 'Mia 钟笑咪' };
+  const stubIdentity = { open_id: 'ou_2523c1e4f0844de00db90f810e970507', name: 'Mia 钟笑咪' };
   const server = createServer(db, { exchangeCode: async () => stubIdentity });
   await new Promise((r) => server.listen(0, r));
   const port = server.address().port;
@@ -67,7 +67,7 @@ test('OAuth HTTP 流：authorize 302 + 回调换身份 + 花名册 fail-closed +
   assert.ok(loc.href.startsWith('https://accounts.feishu.cn/'));
   const state = loc.searchParams.get('state');
   assert.ok(verifyState(state));
-  assert.equal(loc.searchParams.get('app_id'), 'cli_aac5c592feb89cd0');
+  assert.equal(loc.searchParams.get('app_id'), 'cli_aaf72a911bb9dd21');
 
   // 2. 回调：合法 state + code → 匹配 mia → Set-Cookie + 302 /
   const r2 = await fetch(`${base}/api/v1/oauth/callback?code=abc&state=${encodeURIComponent(state)}`,

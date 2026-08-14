@@ -194,7 +194,7 @@ test('推送卡片：结构合法 + 三段信号 + 深链；同 run 重复推 SK
   assert.ok(card.elements.some((e) => e.tag === 'action'));
   const text = JSON.stringify(card);
   assert.match(text, /Fit /);
-  assert.match(text, /127\.0\.0\.1:3000\/\?open=opportunity:/);
+  assert.match(text, /127\.0\.0\.1:\d+\/\?open=opportunity:/);
   const r1 = pushCard(db, { consultant_id: CID, kind: 'DAILY_TOP3', run_id: run.run.run_id,
                             card, target: 'oc_test', send: false });
   assert.equal(r1.status, 'PREVIEW');

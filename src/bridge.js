@@ -21,6 +21,7 @@ import { now } from './db.js';
 import { runSync } from './sync.js';
 import { getValidAccessToken, listUserChats, listChatMessages, listBitableRecords } from './feishu.js';
 import { BITABLE_BASE, BITABLE_TABLE, deriveProjectId, flatLark, flatApi, parseBitableRecord } from './bitable.js';
+import { larkProfileArgs } from './env.js';
 
 // deriveProjectId 权威已迁 bitable.js；此处 re-export 保持既有 import 不破
 export { deriveProjectId };
@@ -34,7 +35,7 @@ export const BRIDGE_CHATS = [
 
 const lark = (args) => {
   // timeout 防 lark-cli 挂死（实测会无限 hang 且自我复活拖垮整机）；45s 上限杀掉
-  const out = execFileSync('lark-cli', args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
+  const out = execFileSync('lark-cli', [...larkProfileArgs(), ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024,
     timeout: 45000, killSignal: 'SIGKILL' });
   return JSON.parse(out.slice(out.indexOf('{')));
 };

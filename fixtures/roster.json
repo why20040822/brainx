@@ -2,21 +2,59 @@
   {
     "consultant_id": "felix",
     "display_name": "Felix 黄鑫",
-    "open_id": "ou_718417b9cb0db1e061fe8eae5c9ac95f",
-    "profile_keywords": ["增长", "投放", "广告", "运营", "产品", "AI", "商业化", "增长负责人"],
+    "open_id": "ou_3b30bc83806e157d9af0cd9188d7ab8d",
+    "profile_keywords": [
+      "增长",
+      "投放",
+      "广告",
+      "运营",
+      "产品",
+      "AI",
+      "商业化",
+      "增长负责人"
+    ],
     "profile_note": "方向画像 v1 手工维护（补全文档 §17.1）；历史项目关键词由 job_memberships 历史自动补充"
   },
   {
     "consultant_id": "mia",
     "display_name": "Mia 钟笑咪",
-    "open_id": "ou_1947320b06c2381f46ef8072e578be7a",
+    "open_id": "ou_2523c1e4f0844de00db90f810e970507",
     "profile_keywords": []
   },
   {
     "consultant_id": "york",
     "display_name": "York 姚堃",
-    "open_id": "ou_f0159e0a97fac03109394839e2efeded",
-    "profile_keywords": ["产品", "技术", "工程", "算法", "前后端", "运营增长", "AI应用"],
+    "open_id": "ou_fe61bf6ab2dc68b16fc58790fb45d44b",
+    "profile_keywords": [
+      "产品",
+      "技术",
+      "工程",
+      "算法",
+      "前后端",
+      "运营增长",
+      "AI应用"
+    ],
     "profile_note": "2026-08-11 数据播种：源自其本人 2026-07-25 在 ZP 群的高亮指令（『优先高亮 产品、技术、工程、算法、前后端、运营增长、AI应用』）"
+  },
+  {
+    "consultant_id": "wendy",
+    "display_name": "Wendy 郭雯",
+    "open_id": "ou_6f357ee5cf73c7f2bb9c589d866cadea",
+    "profile_keywords": [],
+    "profile_note": ""
+  },
+  {
+    "consultant_id": "linda",
+    "display_name": "Linda 崔馨月",
+    "open_id": "ou_4c810c0729050de5877347697aee2c29",
+    "profile_keywords": [],
+    "profile_note": ""
+  },
+  {
+    "consultant_id": "shanon",
+    "display_name": "Shanon 申莎娜",
+    "open_id": "ou_7936bee222cd063e58b5f789dfb0f066",
+    "profile_keywords": [],
+    "profile_note": ""
   }
 ]

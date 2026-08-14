@@ -11,3 +11,11 @@ const p = process.env.BRAINX_ENV_FILE || join(ROOT, '.env');
 if (existsSync(p) && typeof process.loadEnvFile === 'function') {
   try { process.loadEnvFile(p); } catch { /* 格式错误不致命，按未配置处理 */ }
 }
+
+/** BRAINX_LARK_PROFILE：lark-cli 命名 profile。服务器多应用并存（Mia 个人应用 +
+ * braintex的小机器人），brainx 的 lark-cli 调用一律显式 --profile 指定身份，
+ * 不依赖默认 profile（默认位留给其他服务）。空 = 不传（本地开发兼容）。 */
+export const larkProfileArgs = () => {
+  const prof = process.env.BRAINX_LARK_PROFILE || '';
+  return prof ? ['--profile', prof] : [];
+};

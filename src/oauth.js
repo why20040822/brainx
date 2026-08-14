@@ -11,7 +11,9 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { sessionSecret } from './session.js';
 
-export const FEISHU_APP_ID = process.env.BRAINX_FEISHU_APP_ID || 'cli_aac5c592feb89cd0';
+// 默认应用 = braintex的小机器人（团队服务应用，2026-08-14 起；旧 Mia 个人应用
+// cli_aac5c592feb89cd0 仅本地开发兼容，用 BRAINX_FEISHU_APP_ID 显式覆盖）
+export const FEISHU_APP_ID = process.env.BRAINX_FEISHU_APP_ID || 'cli_aaf72a911bb9dd21';
 const APP_SECRET = () => process.env.BRAINX_FEISHU_APP_SECRET || '';
 const BASE = () => process.env.BRAINX_BASE_URL || 'http://127.0.0.1:3000';
 

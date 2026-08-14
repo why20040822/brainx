@@ -5,6 +5,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { now, uuid } from './db.js';
+import { larkProfileArgs } from './env.js';
 
 const BASE_URL = process.env.BRAINX_BASE_URL || 'http://127.0.0.1:3000';
 
@@ -112,7 +113,7 @@ export function pushCard(db, { consultant_id, kind, run_id, card, target, send =
     try {
       // lark-cli 1.0.67 无 im messages create 打字命令 → 走 api 逃生舱（bot 身份，im:message:send_as_bot）。
       // 卡片 content 需要二次 stringify（Feishu 契约：content 是 JSON 字符串）。
-      const out = execFileSync('lark-cli', ['api', 'POST', '/open-apis/im/v1/messages', '--as', 'bot',
+      const out = execFileSync('lark-cli', [...larkProfileArgs(), 'api', 'POST', '/open-apis/im/v1/messages', '--as', 'bot',
         '--params', JSON.stringify({ receive_id_type: target.startsWith('oc_') ? 'chat_id' : 'open_id' }),
         '--data', JSON.stringify({ receive_id: target, msg_type: 'interactive',
                                    content: JSON.stringify(card) })],

@@ -21,6 +21,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { now, uuid } from './db.js';
 import { BITABLE_BASE, BITABLE_TABLE, flatLark, parseBitableRecord } from './bitable.js';
+import { larkProfileArgs } from './env.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -37,6 +38,7 @@ export function loadFixture() {
  * relation=null（事实/关系分离——防止 TEAM_SHARED 把同步者既有策展关系冲掉）。 */
 export function fetchFeishuJobs() {
   const out = execFileSync('lark-cli', [
+    ...larkProfileArgs(),
     'base', '+record-list', '--base-token', BITABLE_BASE,
     '--table-id', BITABLE_TABLE, '--page-size', '100', '--format', 'json',
   ], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });

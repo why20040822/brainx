@@ -119,7 +119,7 @@ test('OAuth 回调：带令牌对的身份 → 加密入库，可立即用于按
   process.env.BRAINX_FEISHU_APP_SECRET = 'test-secret';
   const dbx = openDb(':memory:');
   const stubIdentity = {
-    open_id: 'ou_1947320b06c2381f46ef8072e578be7a', name: 'Mia 钟笑咪',
+    open_id: 'ou_2523c1e4f0844de00db90f810e970507', name: 'Mia 钟笑咪',
     tokens: { access_token: 'at_cb', refresh_token: 'rt_cb', expires_in: 7200,
               refresh_expires_in: 30 * 86400, scope: 'offline_access' },
   };
@@ -140,7 +140,7 @@ test('OAuth 回调：带令牌对的身份 → 加密入库，可立即用于按
 test('OAuth 回调：无令牌对的旧桩身份 → 登录不崩，无令牌行', async () => {
   process.env.BRAINX_FEISHU_APP_SECRET = 'test-secret';
   const dbx = openDb(':memory:');
-  const server = createServer(dbx, { exchangeCode: async () => ({ open_id: 'ou_1947320b06c2381f46ef8072e578be7a', name: 'Mia' }) });
+  const server = createServer(dbx, { exchangeCode: async () => ({ open_id: 'ou_2523c1e4f0844de00db90f810e970507', name: 'Mia' }) });
   await new Promise((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${server.address().port}`;
   const r = await fetch(`${base}/api/v1/oauth/callback?code=abc&state=${encodeURIComponent(signState())}`,
