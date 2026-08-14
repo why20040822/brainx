@@ -180,27 +180,32 @@ export async function bridgeOnce(db, { consultant_ids, execImpl = lark, api = { 
   const skipped = [];
   let changed = false;
 
-  // 1) 职位盘点（团队共享池）：优先用户令牌直连；无令牌回落 lark-cli（兼容期）
+  // 1) 职位盘点 Bitable（团队共享池）——2026-08-14 起默认关闭：TTC 已是职位权威源
+  // （真 project_id/HC/Pipeline），盘点板的 P-FIX 占位行属「假数据」不再入池
+  // （0012 清理存量）。消息监控（下方第 2 段）不受影响。回滚：BRAINX_BITABLE_ON=1。
+  const BITABLE_ON = process.env.BRAINX_BITABLE_ON === '1';
   let payload = null;
-  if (api) {
-    const token = await firstValidToken(db, cids, fetchImpl);
-    if (token) {
-      try { payload = await fetchBitablePayloadApi(token, fetchImpl); }
-      catch (e) { errors.push(`bitable_api:${String(e.message).slice(0, 120)}`); }
+  if (BITABLE_ON) {
+    if (api) {
+      const token = await firstValidToken(db, cids, fetchImpl);
+      if (token) {
+        try { payload = await fetchBitablePayloadApi(token, fetchImpl); }
+        catch (e) { errors.push(`bitable_api:${String(e.message).slice(0, 120)}`); }
+      }
     }
-  }
-  if (!payload) {
-    try { payload = fetchBitablePayload(execImpl); }
-    catch (e) { errors.push(`bitable_lark:${String(e.message).slice(0, 120)}`); }
-  }
-  if (payload) {
-    for (const cid of cids) {
-      const prev = db.prepare(`SELECT input_hash FROM sync_runs
-        WHERE consultant_id=? AND source='bridge' ORDER BY started_at DESC LIMIT 1`).get(cid);
-      const s = runSync(db, { source: 'bridge', consultant_id: cid, payload });
-      if (!prev || prev.input_hash !== s.input_hash) changed = true;
-      syncs.push({ consultant_id: cid, sync_id: s.sync_id, complete: s.complete,
-                   rows: s.rows_read, errors: s.errors.length });
+    if (!payload) {
+      try { payload = fetchBitablePayload(execImpl); }
+      catch (e) { errors.push(`bitable_lark:${String(e.message).slice(0, 120)}`); }
+    }
+    if (payload) {
+      for (const cid of cids) {
+        const prev = db.prepare(`SELECT input_hash FROM sync_runs
+          WHERE consultant_id=? AND source='bridge' ORDER BY started_at DESC LIMIT 1`).get(cid);
+        const s = runSync(db, { source: 'bridge', consultant_id: cid, payload });
+        if (!prev || prev.input_hash !== s.input_hash) changed = true;
+        syncs.push({ consultant_id: cid, sync_id: s.sync_id, complete: s.complete,
+                     rows: s.rows_read, errors: s.errors.length });
+      }
     }
   }
 
@@ -287,9 +292,9 @@ export function startBridge(db, bus, { intervalMs, recommendFn, consultantIdsFn,
             }
           }
         }
-        // Bitable 两条通道都断了 = 全员事故，广播；个人令牌失效只提醒本人
+        // 职位源全断 = 全员事故，广播；个人令牌失效只提醒本人
         if (out.syncs.length === 0) {
-          bus?.emit({ type: 'sync_error', message: '职位盘点拉取失败（API 与 lark-cli 均不可用）', at: now() });
+          bus?.emit({ type: 'sync_error', message: '职位源拉取失败（TTC 与 Bitable 均不可用）', at: now() });
         }
         const curSkipped = new Set(out.skipped);
         for (const cid of out.skipped) {

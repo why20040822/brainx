@@ -16,6 +16,7 @@ import { signSession, verifySession, cookieOf } from './session.js';
 import { signState, verifyState, buildAuthorizeUrl, exchangeCode, oauthConfigured } from './oauth.js';
 import { findByOpenId, updateProfile } from './roster.js';
 import { startBridge } from './bridge.js';
+import { startScheduler } from './scheduler.js';
 import { makeAutoPush } from './autopush.js';
 import { saveUserTokens, tokenStatus } from './feishu.js';
 import { jobVisibleTo } from './visibility.js';
@@ -372,4 +373,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     });
     console.log(`桥接器已启动（间隔 ${Number(process.env.BRAINX_BRIDGE_INTERVAL_MS || 180000) / 1000}s）`);
   }
+  // 定时推送：每天 07:00 / 19:00（CST）给每位顾问发 Top3 卡；BRAINX_PUSH_SCHEDULE=0 关闭
+  startScheduler(db);
+  console.log('定时推送已启动（07:00 / 19:00 CST）');
 }
