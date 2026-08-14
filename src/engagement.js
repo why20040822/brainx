@@ -1,8 +1,13 @@
 /** engagement.js — 职位状态机 + 幂等 + 关注上限 + 冷却期（PRD §7）。
  *
  * 状态机：NEW→RECOMMENDED→VIEWED→WATCHED→ACCEPTED→RELEASED/COMPLETED
- *   DISMISSED 冷却 30 天；WATCHED 90 天无动作 → EXPIRED；关注 ≤10。
+ *   DISMISSED 冷却 30 天（冷却后可重新关注）；WATCHED 90 天无动作 → EXPIRED；关注 ≤10。
  * 单一事实源 = decision_events 账本（current_engagement 视图推导）。
+ *
+ * 2026-08-14 前后端对齐修正：
+ *   - WATCH.from 补 RELEASED/DISMISSED、DISMISS.from 补 RELEASED——与前端交付契约
+ *     （「已释放→重新关注/暂不考虑」「暂不考虑→重新关注」）一致；
+ *     修正前冷却期守卫（inCooldown）对 DISMISSED 职位永远不可达（状态冲突先拦断）。
  *
  * 2026-08-10 框架修正：
  *   - VIEW 是审计事件不是降级动作：查看 WATCHED 职位 next_state 保持 WATCHED
@@ -20,10 +25,10 @@ const EXPIRE_DAYS = 90;
 /** 合法迁移表。to 为函数时按当前态求 next_state（VIEW 不降级 WATCHED）。 */
 const TRANSITIONS = {
   VIEW:    { from: ['NEW', 'RECOMMENDED', 'VIEWED', 'WATCHED'], to: (s) => (s === 'WATCHED' ? 'WATCHED' : 'VIEWED'), event: 'VIEWED' },
-  WATCH:   { from: ['NEW', 'RECOMMENDED', 'VIEWED'], to: 'WATCHED', event: 'WATCHED' },
+  WATCH:   { from: ['NEW', 'RECOMMENDED', 'VIEWED', 'RELEASED', 'DISMISSED'], to: 'WATCHED', event: 'WATCHED' },
   UNWATCH: { from: ['WATCHED'], to: 'VIEWED', event: 'RELEASED', note: '关注回滚' },
   ACCEPT:  { from: ['WATCHED', 'VIEWED', 'RECOMMENDED'], to: 'ACCEPTED', event: 'ACCEPTED', confirm: true },
-  DISMISS: { from: ['NEW', 'RECOMMENDED', 'VIEWED', 'WATCHED'], to: 'DISMISSED', event: 'DISMISSED', reason: true },
+  DISMISS: { from: ['NEW', 'RECOMMENDED', 'VIEWED', 'WATCHED', 'RELEASED'], to: 'DISMISSED', event: 'DISMISSED', reason: true },
   RELEASE: { from: ['ACCEPTED'], to: 'RELEASED', event: 'RELEASED' },
   COMPLETE:{ from: ['ACCEPTED'], to: 'COMPLETED', event: 'COMPLETED' },
 };
