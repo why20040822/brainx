@@ -41,7 +41,13 @@ async function backend() {
   try {
     const db = await import('./db.js');
     await db.pingMysql();
+    // 首次连通即幂等建表（IF NOT EXISTS），保证空库也能立刻读写。
+    // 建表失败（如账号无 DDL 权限）不阻断——降级为「已连库但表未就绪」，由 health 暴露。
+    let schema = 'ready';
+    try { await db.initTalentSchema(); }
+    catch (e) { schema = `SCHEMA_INIT_FAILED: ${String(e.message).slice(0, 80)}`; }
     _backend = makeMysqlBackend(db);
+    _backend.schema = schema;
     return _backend;
   } catch (e) {
     _backend = MEM;
@@ -50,10 +56,39 @@ async function backend() {
   }
 }
 
+/** 丢弃缓存后端，下次调用重新按 env 选择（填完 .env 后无需重启即可切库）。 */
+export function reconnectBackend() { _backend = null; _forcedMemory = false; }
+
 /** 当前后端状态（给 /health 与前端提示用；绝不出凭据本体）。 */
 export async function talentBackendStatus() {
   const b = await backend();
   return { backend: b === MEM ? 'memory' : 'mysql', degraded: b.degraded || null };
+}
+
+/** 详细健康自检：后端类型 + 连通性 + 建表状态（凭据只出 host/库名，绝不出密码）。 */
+export async function talentHealth() {
+  reconnectBackend(); // 每次都按最新 env 重判，方便填完凭据刷新即见效
+  const b = await backend();
+  const isMysql = b !== MEM;
+  return {
+    backend: isMysql ? 'mysql' : 'memory',
+    connected: isMysql,
+    schema: isMysql ? (b.schema || 'unknown') : 'n/a (memory)',
+    degraded: b.degraded || null,
+    // 只回显非敏感连接信息，密码/账号绝不出
+    config: {
+      host: process.env.BRAINX_MYSQL_HOST || 'ttc-rds-public-0707.mysql.rds.aliyuncs.com',
+      port: Number(process.env.BRAINX_MYSQL_PORT) || 3306,
+      database: process.env.BRAINX_MYSQL_DATABASE || null,
+      credentials_present: !!(process.env.BRAINX_MYSQL_USER && process.env.BRAINX_MYSQL_DATABASE),
+      ssl: process.env.BRAINX_MYSQL_SSL === '1',
+    },
+    hint: isMysql
+      ? '已连接真实 RDS 人才库'
+      : (process.env.BRAINX_MYSQL_USER
+          ? '已填凭据但连不通：检查公网 IP 是否已加 RDS 白名单 / 账号密码 / 网络'
+          : '未填凭据，当前使用内存库；在 .env 填 BRAINX_MYSQL_USER/PASSWORD/DATABASE 后重试'),
+  };
 }
 
 // ---------------------------------------------------------------------------
