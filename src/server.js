@@ -25,7 +25,7 @@ import { validateJwt, saveTtcToken, ttcAuthStatus } from './ttcsdk/auth.js';
 import { quota as ttcQuota } from './ttcsdk/user.js';
 import { TtcApiError } from './ttcsdk/http.js';
 import { radarRows, clientRows } from './radar.js';
-import { syncTalentsFromCsv, listTalents as listTalentsRepo, getTalent, talentBackendStatus, ingestResume, syncTalentsFromResumes, listResumes } from './talent.js';
+import { syncTalentsFromCsv, listTalents as listTalentsRepo, getTalent, talentBackendStatus, ingestResume, syncTalentsFromResumes, listResumes, talentHealth } from './talent.js';
 import { talentSupplyForJob, talentSupplyEnabled } from './talent-supply.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -83,6 +83,12 @@ export function createServer(db = openDb(), deps = {}) {
     'GET /api/v1/talent/status': async (req, res, cid) => {
       try { json(res, 200, { ...(await talentBackendStatus()), supply_enabled: talentSupplyEnabled() }); }
       catch (e) { err(res, 502, 'TALENT_BACKEND_ERROR', String(e.message).slice(0, 200)); }
+    },
+    // 人才库健康自检：后端类型 + RDS 连通性 + 建表状态（凭据只出 host/库名，不出密码）。
+    // 填完 .env 的 BRAINX_MYSQL_* 后请求此路由即可确认是否真的切到了阿里云 RDS。
+    'GET /api/v1/talent/health': async (req, res, cid) => {
+      try { json(res, 200, await talentHealth()); }
+      catch (e) { err(res, 502, 'TALENT_HEALTH_ERROR', String(e.message).slice(0, 200)); }
     },
     'GET /api/v1/talent': async (req, res, cid, q) => {
       try {
