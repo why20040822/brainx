@@ -25,7 +25,7 @@ import { validateJwt, saveTtcToken, ttcAuthStatus } from './ttcsdk/auth.js';
 import { quota as ttcQuota } from './ttcsdk/user.js';
 import { TtcApiError } from './ttcsdk/http.js';
 import { radarRows, clientRows } from './radar.js';
-import { syncTalentsFromCsv, listTalents as listTalentsRepo, getTalent, talentBackendStatus } from './talent.js';
+import { syncTalentsFromCsv, listTalents as listTalentsRepo, getTalent, talentBackendStatus, ingestResume, syncTalentsFromResumes, listResumes } from './talent.js';
 import { talentSupplyForJob, talentSupplyEnabled } from './talent-supply.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
