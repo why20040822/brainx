@@ -18,6 +18,7 @@
     "web": "node src/server.js",
     "fixture": "node scripts/build_fixture.mjs",
     "init-talent": "node scripts/init-talent-schema.mjs",
+    "talent:health": "node scripts/talent-health.mjs",
     "test": "node --test --test-force-exit"
   },
   "bin": {
