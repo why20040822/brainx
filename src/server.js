@@ -110,6 +110,30 @@ export function createServer(db = openDb(), deps = {}) {
         json(res, 200, out);
       } catch (e) { err(res, 502, 'TALENT_SYNC_FAILED', String(e.message).slice(0, 300)); }
     },
+    // 简历解析 → 真实候选人入库（单份纯文本；PDF/docx 先由前端转文本再传）
+    'POST /api/v1/talent/resume': async (req, res, cid) => {
+      const b = await body(req);
+      const text = b?.text;
+      if (!text || !String(text).trim()) return err(res, 422, 'EMPTY_RESUME', '简历内容为空');
+      try {
+        const out = await ingestResume(String(text), { fileName: b?.file_name || '', createdBy: null });
+        json(res, 200, out);
+      } catch (e) { err(res, 502, 'RESUME_INGEST_FAILED', String(e.message).slice(0, 300)); }
+    },
+    // 批量简历同步：resumes = [{ text, file_name }]
+    'POST /api/v1/talent/resumes': async (req, res, cid) => {
+      const b = await body(req);
+      const resumes = Array.isArray(b?.resumes) ? b.resumes.map((r) => ({ text: r.text, fileName: r.file_name })) : [];
+      if (!resumes.length) return err(res, 422, 'NO_RESUMES', '未提供简历');
+      try {
+        const out = await syncTalentsFromResumes(resumes, { createdBy: null });
+        json(res, 200, out);
+      } catch (e) { err(res, 502, 'RESUMES_SYNC_FAILED', String(e.message).slice(0, 300)); }
+    },
+    'GET /api/v1/talent/:id/resumes': async (req, res, cid, q, id) => {
+      try { json(res, 200, { items: await listResumes(id) }); }
+      catch (e) { err(res, 502, 'RESUME_LIST_FAILED', String(e.message).slice(0, 200)); }
+    },
     // 职位供给参考（旁路适配层；BRAINX_TALENT_SUPPLY=1 才启用）
     'GET /api/v1/opportunities/:id/talent-supply': async (req, res, cid, q, id) => {
       const job = db.prepare('SELECT * FROM job_facts WHERE project_id=?').get(id);
