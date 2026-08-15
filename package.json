@@ -10,6 +10,10 @@
     "mysql2": "^3.23.3"
   },
   "scripts": {
+    "dev": "npm --prefix frontend/decision-workbench run dev",
+    "build": "npm --prefix frontend/decision-workbench run build",
+    "start": "npm --prefix frontend/decision-workbench run start",
+    "frontend:install": "npm --prefix frontend/decision-workbench install",
     "sync": "node bin/brainx-sync.mjs",
     "adapter": "node bin/brainx-adapter.mjs",
     "recommend": "node bin/brainx-recommend.mjs",
