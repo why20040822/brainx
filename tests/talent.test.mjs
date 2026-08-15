@@ -81,3 +81,17 @@ test('后端状态：无凭据默认内存后端', async () => {
   const st = await talentBackendStatus();
   assert.equal(st.backend, 'memory');
 });
+
+test('健康自检：无凭据时报 memory + 未连通 + 提示填凭据', async () => {
+  const savedUser = process.env.BRAINX_MYSQL_USER, savedDb = process.env.BRAINX_MYSQL_DATABASE;
+  delete process.env.BRAINX_MYSQL_USER; delete process.env.BRAINX_MYSQL_DATABASE;
+  const h = await talentHealth();
+  assert.equal(h.backend, 'memory');
+  assert.equal(h.connected, false);
+  assert.equal(h.config.credentials_present, false);
+  assert.ok(!/密码|password/i.test(JSON.stringify(h))); // 绝不回显密码
+  assert.ok(typeof h.hint === 'string' && h.hint.length > 0);
+  if (savedUser !== undefined) process.env.BRAINX_MYSQL_USER = savedUser;
+  if (savedDb !== undefined) process.env.BRAINX_MYSQL_DATABASE = savedDb;
+  resetBackend(); useMemoryBackend();
+});
