@@ -15,6 +15,7 @@
  */
 import { parseCsvFile } from './csv.js';
 import { tokenize } from './scorer.js';
+import { parseResumeText } from './resume.js';
 
 // ---------------------------------------------------------------------------
 // 后端选择：优先真 MySQL；未配置/连不通则回退内存库。
