@@ -121,6 +121,45 @@ export async function syncTalentsFromCsv(csvPath, { createdBy = null } = {}) {
   return result;
 }
 
+/** 解析一份简历纯文本 → UPSERT 真实候选人（姓名/手机/邮箱/摘要）+ 挂技能与意向标签
+ *  + 存简历原文（resume 表）。返回 { id, created, name, tags, resumeId }。 */
+export async function ingestResume(rawText, { fileName = '', createdBy = null } = {}) {
+  const parsed = parseResumeText(rawText, { fileName });
+  const up = await upsertTalent({
+    name: parsed.name, phone: parsed.phone, email: parsed.email,
+    status: 'active', summary: parsed.summary, createdBy,
+    lastActiveTime: new Date().toISOString(),
+  });
+  const tagIds = await attachTags(up.id, parsed.tags);
+  const b = await backend();
+  const resumeId = await b.saveResume({
+    talentId: up.id, fileName: parsed.fileName, parsedContent: parsed.parsedContent,
+  });
+  return { id: up.id, created: up.created, name: parsed.name, tags: tagIds.length, resumeId,
+    phone: parsed.phone, email: parsed.email };
+}
+
+/** 批量：从一组简历（[{text, fileName}]）同步真实候选人进库。 */
+export async function syncTalentsFromResumes(resumes = [], { createdBy = null } = {}) {
+  const result = { read: 0, inserted: 0, updated: 0, tagged: 0, items: [] };
+  for (const r of resumes) {
+    const text = typeof r === 'string' ? r : r.text;
+    if (!text || !String(text).trim()) continue;
+    result.read++;
+    const out = await ingestResume(text, { fileName: r.fileName || '', createdBy });
+    if (out.created) result.inserted++; else result.updated++;
+    result.tagged += out.tags;
+    result.items.push({ id: out.id, name: out.name, tags: out.tags });
+  }
+  return result;
+}
+
+/** 查候选人简历列表。 */
+export async function listResumes(talentId) {
+  const b = await backend();
+  return b.listResumes(Number(talentId));
+}
+
 /** 分页列出候选人。 */
 export async function listTalents({ limit = 20, offset = 0, status = null } = {}) {
   const b = await backend();
