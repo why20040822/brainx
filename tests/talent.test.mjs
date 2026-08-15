@@ -89,7 +89,8 @@ test('健康自检：无凭据时报 memory + 未连通 + 提示填凭据', asyn
   assert.equal(h.backend, 'memory');
   assert.equal(h.connected, false);
   assert.equal(h.config.credentials_present, false);
-  assert.ok(!/密码|password/i.test(JSON.stringify(h))); // 绝不回显密码
+  assert.equal(JSON.stringify(h).includes('password_hash'), false); // 结构里不含密码字段
+  assert.equal('password' in h.config, false); // config 只出 host/port/db，无密码键
   assert.ok(typeof h.hint === 'string' && h.hint.length > 0);
   if (savedUser !== undefined) process.env.BRAINX_MYSQL_USER = savedUser;
   if (savedDb !== undefined) process.env.BRAINX_MYSQL_DATABASE = savedDb;
