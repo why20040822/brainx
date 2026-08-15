@@ -10,9 +10,9 @@
     "mysql2": "^3.23.3"
   },
   "scripts": {
-    "dev": "cd frontend/decision-workbench && WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev --host 0.0.0.0 --port 3000",
-    "build": "cd frontend/decision-workbench && WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
-    "start": "cd frontend/decision-workbench && WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start --host 0.0.0.0 --port 3000",
+    "dev": "cd frontend/decision-workbench && WRANGLER_LOG_PATH=.wrangler/wrangler.log ./node_modules/.bin/vinext dev --host 0.0.0.0 --port 3000",
+    "build": "cd frontend/decision-workbench && WRANGLER_LOG_PATH=.wrangler/wrangler.log ./node_modules/.bin/vinext build",
+    "start": "cd frontend/decision-workbench && WRANGLER_LOG_PATH=.wrangler/wrangler.log ./node_modules/.bin/vinext start --host 0.0.0.0 --port 3000",
     "frontend:install": "npm --prefix frontend/decision-workbench install",
     "sync": "node bin/brainx-sync.mjs",
     "adapter": "node bin/brainx-adapter.mjs",
