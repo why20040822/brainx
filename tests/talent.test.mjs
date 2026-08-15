@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   useMemoryBackend, resetBackend, upsertTalent, attachTags, getTalent,
   listTalents, upsertPosition, writeMatchRecord, listMatchesForPosition,
-  talentBackendStatus,
+  talentBackendStatus, talentHealth,
 } from '../src/talent.js';
 import { talentSupplyForJob, readTalentSupply } from '../src/talent-supply.js';
 
