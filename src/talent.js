@@ -309,12 +309,12 @@ const safeJson = (s) => { try { return typeof s === 'string' ? JSON.parse(s) : s
 // ---------------------------------------------------------------------------
 const MEM = {
   degraded: 'MEMORY',
-  _talents: new Map(), _tags: new Map(), _talentTags: [], _positions: new Map(), _matches: [],
-  _seq: { talent: 0, tag: 0, position: 0, match: 0 },
+  _talents: new Map(), _tags: new Map(), _talentTags: [], _positions: new Map(), _matches: [], _resumes: [],
+  _seq: { talent: 0, tag: 0, position: 0, match: 0, resume: 0 },
   reset() {
     this._talents.clear(); this._tags.clear(); this._talentTags = [];
-    this._positions.clear(); this._matches = [];
-    this._seq = { talent: 0, tag: 0, position: 0, match: 0 };
+    this._positions.clear(); this._matches = []; this._resumes = [];
+    this._seq = { talent: 0, tag: 0, position: 0, match: 0, resume: 0 };
     this.degraded = 'MEMORY';
   },
   async upsertTalent(rec) {
