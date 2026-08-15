@@ -284,6 +284,21 @@ function makeMysqlBackend(db) {
         return rows.map((r) => ({ ...r, match_detail: safeJson(r.match_detail) }));
       });
     },
+    async saveResume({ talentId, fileName, parsedContent }) {
+      return withMysql(async (conn) => {
+        const [res] = await conn.execute(
+          `INSERT INTO resume (talent_id, file_name, file_path, parsed_content) VALUES (?,?,?,?)`,
+          [talentId, fileName, `inline://${fileName}`, parsedContent]);
+        return res.insertId;
+      });
+    },
+    async listResumes(talentId) {
+      return withMysql(async (conn) => {
+        const [rows] = await conn.execute(
+          `SELECT id, file_name, upload_time, LEFT(parsed_content, 200) AS preview FROM resume WHERE talent_id=? ORDER BY id DESC`, [talentId]);
+        return rows;
+      });
+    },
   };
 }
 
