@@ -277,3 +277,15 @@ html,body,.btex-app{background:var(--bg)}
 .supply-match{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:9px 11px;border:1px solid rgba(60,60,67,.14);border-radius:9px;background:rgba(255,255,255,.7)}
 .supply-match b{color:#1d1d1f;font-weight:560}
 .supply-match span{color:#0066cc;font-variant-numeric:tabular-nums;font-size:11px}
+
+/* 数据源页：人才库后端状态卡片 */
+.talent-backend{grid-column:1 / -1}
+.talent-backend h3{margin:14px 0 8px;font-size:15px;color:#1d1d1f;letter-spacing:-.01em}
+.talent-backend p{margin:0;font-size:12px;line-height:1.6;color:#5b6470}
+.talent-backend code{font:11px var(--font-mono);background:rgba(118,118,128,.12);padding:1px 5px;border-radius:5px;color:#334}
+.backend-facts{display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;margin-top:14px}
+.backend-facts>div{display:flex;flex-direction:column;gap:3px}
+.backend-facts dt{font-size:11px;color:#8a94a0}
+.backend-facts dd{margin:0;font-size:12px;color:#2b3a48}
+.backend-facts dd.unknown{color:#a1323f}
+@media(max-width:720px){.backend-facts{grid-template-columns:1fr}}
