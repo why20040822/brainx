@@ -15,7 +15,15 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body className={`${geist.variable} ${mono.variable}`}>{children}</body>
+      <body className={`${geist.variable} ${mono.variable}`}>
+        {children}
+        <Script
+          defer
+          strategy="afterInteractive"
+          src="https://cdn.eazo.ai/branding/eazo-brand-banner.js"
+          data-eazo-app-id="iV1ADpn7uxkl4kFC"
+        />
+      </body>
     </html>
   );
 }
