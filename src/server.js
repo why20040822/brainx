@@ -77,6 +77,48 @@ export function createServer(db = openDb(), deps = {}) {
       json(res, 200, { items: loadConsultants(db)
         .map((c) => ({ consultant_id: c.consultant_id, display_name: c.display_name })) });
     },
+
+    // —— 人才库（MySQL 人才库，异步；连不通自动内存回退）——
+    // 注意：人才库读写独立于 SQLite 决策库，绝不进入职位/客户基础评分。
+    'GET /api/v1/talent/status': async (req, res, cid) => {
+      try { json(res, 200, { ...(await talentBackendStatus()), supply_enabled: talentSupplyEnabled() }); }
+      catch (e) { err(res, 502, 'TALENT_BACKEND_ERROR', String(e.message).slice(0, 200)); }
+    },
+    'GET /api/v1/talent': async (req, res, cid, q) => {
+      try {
+        const items = await listTalentsRepo({
+          limit: q.get('limit'), offset: q.get('offset'), status: q.get('status') || null });
+        json(res, 200, { items });
+      } catch (e) { err(res, 502, 'TALENT_LIST_FAILED', String(e.message).slice(0, 200)); }
+    },
+    'GET /api/v1/talent/:id': async (req, res, cid, q, id) => {
+      try {
+        const t = await getTalent(id);
+        if (!t) return err(res, 404, 'NOT_FOUND', '候选人不存在');
+        json(res, 200, t);
+      } catch (e) { err(res, 502, 'TALENT_GET_FAILED', String(e.message).slice(0, 200)); }
+    },
+    'POST /api/v1/talent/sync': async (req, res, cid) => {
+      const b = await body(req);
+      const csvPath = b?.csv_path
+        ? join(ROOT, b.csv_path)
+        : join(ROOT, '公司岗位情况-Shanon - Sheet1.csv');
+      if (!isPathInside(ROOT, normalize(csvPath)) || !existsSync(csvPath))
+        return err(res, 422, 'BAD_CSV', 'CSV 路径不合法或不存在');
+      try {
+        const out = await syncTalentsFromCsv(csvPath, { createdBy: null });
+        json(res, 200, out);
+      } catch (e) { err(res, 502, 'TALENT_SYNC_FAILED', String(e.message).slice(0, 300)); }
+    },
+    // 职位供给参考（旁路适配层；BRAINX_TALENT_SUPPLY=1 才启用）
+    'GET /api/v1/opportunities/:id/talent-supply': async (req, res, cid, q, id) => {
+      const job = db.prepare('SELECT * FROM job_facts WHERE project_id=?').get(id);
+      if (!job || !jobVisibleTo(db, cid, id)) return err(res, 404, 'NOT_FOUND', '职位不存在');
+      try {
+        const snap = await talentSupplyForJob({ project_id: job.project_id, company: job.company, role: job.role, notes: job.notes });
+        json(res, 200, snap);
+      } catch (e) { err(res, 502, 'TALENT_SUPPLY_FAILED', String(e.message).slice(0, 200)); }
+    },
     // —— 飞书 OAuth 网页授权（多顾问登录的唯一正式入口）——
     'GET /api/v1/oauth/status': (req, res) => {
       json(res, 200, { configured: oauthConfigured(), dev_auth: devAuth });
