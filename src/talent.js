@@ -378,4 +378,16 @@ const MEM = {
       .sort((a, b) => b.score - a.score)
       .map((m) => ({ ...m, talent_name: byId.get(m.talent_id)?.name ?? null }));
   },
+  async saveResume({ talentId, fileName, parsedContent }) {
+    const id = ++this._seq.resume;
+    this._resumes.push({ id, talent_id: talentId, file_name: fileName,
+      parsed_content: parsedContent, upload_time: new Date().toISOString() });
+    return id;
+  },
+  async listResumes(talentId) {
+    return this._resumes.filter((r) => r.talent_id === talentId)
+      .sort((a, b) => b.id - a.id)
+      .map((r) => ({ id: r.id, file_name: r.file_name, upload_time: r.upload_time,
+        preview: String(r.parsed_content || '').slice(0, 200) }));
+  },
 };
