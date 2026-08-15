@@ -261,3 +261,19 @@ html,body,.btex-app{background:var(--bg)}
 .filter-select-menu button.selected{background:rgba(0,113,227,.14);color:#005fc7;font-weight:650}
 @media(max-width:720px){.filter-select{flex:1;min-width:calc(50% - 4px)}.filter-select-menu{max-width:calc(100vw - 36px)}}
 @media(prefers-reduced-motion:reduce){.filter-select-trigger svg{transition:none}}
+
+/* 候选供给卡片（人才侧适配层呈现） */
+.supply-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.supply-count{display:flex;align-items:baseline;gap:6px}
+.supply-count strong{font-size:26px;letter-spacing:-.03em;color:#1d1d1f;font-variant-numeric:tabular-nums}
+.supply-count span{font-size:11px;color:#6e6e73}
+.supply-badge{font-size:11px;padding:4px 9px;border-radius:999px;font-weight:600}
+.supply-badge.ok{background:rgba(48,164,108,.14);color:#1f7a4d}
+.supply-badge.warn{background:rgba(214,150,20,.16);color:#8a5a08}
+.supply-badge.risk{background:rgba(214,64,80,.14);color:#a1323f}
+.supply-reactivate{font-size:11px;color:#0066cc;margin-left:auto}
+.supply-suggestion{margin:12px 0 0;font-size:12px;line-height:1.55;color:#4b5563}
+.supply-matches{display:grid;gap:7px;margin-top:12px}
+.supply-match{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:9px 11px;border:1px solid rgba(60,60,67,.14);border-radius:9px;background:rgba(255,255,255,.7)}
+.supply-match b{color:#1d1d1f;font-weight:560}
+.supply-match span{color:#0066cc;font-variant-numeric:tabular-nums;font-size:11px}
