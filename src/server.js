@@ -24,6 +24,7 @@ import { validateJwt, saveTtcToken, ttcAuthStatus } from './ttcsdk/auth.js';
 import { quota as ttcQuota } from './ttcsdk/user.js';
 import { TtcApiError } from './ttcsdk/http.js';
 import { radarRows, clientRows } from './radar.js';
+import { effectiveJob, effectiveFactPayload, updateFactOverrides } from './facts.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
@@ -177,18 +178,25 @@ export function createServer(db = openDb(), deps = {}) {
       const job = db.prepare('SELECT * FROM job_facts WHERE project_id=?').get(id);
       // fail-closed：与自己无任何关系的职位一律 404（不泄露存在性），事实明细不出库
       if (!job || !jobVisibleTo(db, cid, id)) return err(res, 404, 'NOT_FOUND', '职位不存在');
+      const effective = effectiveJob(db, cid, id);
       const relRow = db.prepare(`SELECT relation, source, valid_from FROM job_memberships
         WHERE project_id=? AND consultant_id=? AND valid_to IS NULL`).get(id, cid);
       const rel = relationOf(db, cid, id); // 推导关系单一权威（relations.js）
       const eng = currentState(db, cid, id);
-      const events = db.prepare(`SELECT event_type, occurred_at, actor, reason FROM decision_events
-        WHERE project_id=? AND actor=? ORDER BY occurred_at, id`).all(id, cid);
+      const events = [
+        ...db.prepare(`SELECT event_type, occurred_at, actor, reason FROM decision_events
+          WHERE project_id=? AND actor=? ORDER BY occurred_at, id`).all(id, cid),
+        ...db.prepare(`SELECT 'FACT_UPDATED' AS event_type, occurred_at, consultant_id AS actor,
+          '人工修正项目事实并重新判断' AS reason FROM fact_override_events
+          WHERE project_id=? AND consultant_id=? ORDER BY occurred_at, id`).all(id, cid),
+      ].sort((a, b) => String(a.occurred_at).localeCompare(String(b.occurred_at)));
       const rec = db.prepare(`SELECT * FROM recommendations WHERE project_id=? AND consultant_id=?
         ORDER BY created_at DESC LIMIT 1`).get(id, cid);
       const outs = db.prepare(`SELECT stage, value_json, observed_at FROM job_outcomes
         WHERE project_id=? AND consultant_id=? ORDER BY observed_at`).all(id, cid);
       json(res, 200, {
-        job: { ...job, raw_json: undefined, relation: rel },
+        job: { ...effective, raw_json: undefined, relation: rel },
+        fact_updates: effectiveFactPayload(db, cid, id),
         relation: { relation: rel, source: relRow?.source || null, valid_from: relRow?.valid_from || null },
         engagement_state: eng.state, legal_actions: legalActions(db, cid, id),
         events, outcomes: outs.map((o) => ({ ...o, value: JSON.parse(o.value_json) })),
@@ -199,6 +207,32 @@ export function createServer(db = openDb(), deps = {}) {
           evidence_refs: JSON.parse(rec.evidence_refs_json),
           breakdown: JSON.parse(rec.breakdown_json), policy_version: rec.policy_version } : null,
       });
+    },
+
+    'PATCH /api/v1/opportunities/:id/facts': async (req, res, cid, q, id) => {
+      const job = db.prepare('SELECT 1 FROM job_facts WHERE project_id=?').get(id);
+      if (!job || !jobVisibleTo(db, cid, id)) return err(res, 404, 'NOT_FOUND', '职位不存在');
+      const b = await body(req);
+      if (!b) return err(res, 400, 'BAD_JSON', '请求体不是合法 JSON');
+      try {
+        const out = updateFactOverrides(db, cid, id, b);
+        if (!out.ok) return err(res, out.status || 422, 'FACT_UPDATE_REJECTED', out.error);
+        // 覆盖写入后生成新冻结推荐；旧 run / replay 行永不更新。
+        const rec = out.already ? null : recommend(db, cid, { top: 10 });
+        const latest = latestRun(db, cid);
+        const item = latest?.items.find((r) => r.job?.project_id === id) || null;
+        json(res, rec?.blocked ? 409 : 200, {
+          ok: true, already: !!out.already, event_id: out.event_id,
+          effective: effectiveJob(db, cid, id), fact_updates: effectiveFactPayload(db, cid, id),
+          recommendation: item ? {
+            decision_id: item.decision_id, run_id: latest.run.run_id, action: item.action,
+            score: item.score, breakdown: item.breakdown, reasons: item.reasons,
+            risks: item.risks, evidence_coverage: item.evidence_coverage,
+          } : null,
+          decision_run_id: latest?.run?.run_id || rec?.run_id || null,
+          recompute: rec?.blocked ? { blocked: true, reason: rec.reason } : { blocked: false },
+        });
+      } catch (e) { err(res, 500, 'FACT_UPDATE_FAILED', String(e.message).slice(0, 300)); }
     },
 
     'POST /api/v1/opportunities/:id/engagement': async (req, res, cid, q, id) => {
