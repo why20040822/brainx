@@ -37,6 +37,7 @@ export function renderDrawer({ drawerEl, detail, onAction, onReplay, onClose }) 
       <dt>优先级</dt><dd>${esc(PRIORITY_LABEL[j.priority] || '—')}</dd>
       <dt>HC</dt><dd>${j.hc == null ? '未知' : esc(j.hc)}</dd>
       <dt>状态</dt><dd>${esc(j.active_state)}</dd>
+      ${j.chat_last_at ? `<dt>群活跃</dt><dd>${esc(String(j.chat_last_at).slice(0, 16))}（近7天 ${j.chat_msgs_7d ?? 0} 条）</dd>` : ''}
       ${j.notes ? `<dt>需求细节</dt><dd style="white-space:pre-wrap">${esc(j.notes)}</dd>` : ''}
       <dt>承接状态</dt><dd>${esc(STATE_LABEL[detail.engagement_state] || detail.engagement_state)}</dd>
       <dt>来源</dt><dd>${j.source_url ? `<a href="${esc(j.source_url)}" target="_blank" rel="noreferrer">TTC 来源链接 ↗</a>` : '—'}</dd>

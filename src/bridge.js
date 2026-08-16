@@ -19,7 +19,7 @@
 import { execFileSync } from 'node:child_process';
 import { now } from './db.js';
 import { runSync } from './sync.js';
-import { getValidAccessToken, listUserChats, listChatMessages, listBitableRecords } from './feishu.js';
+import { getValidAccessToken, listUserChats, listChatMessages, listBitableRecords, markReauth } from './feishu.js';
 import { BITABLE_BASE, BITABLE_TABLE, deriveProjectId, flatLark, flatApi, parseBitableRecord } from './bitable.js';
 import { larkProfileArgs } from './env.js';
 import { getValidTtcJwt, markTtcReauth } from './ttcsdk/auth.js';
@@ -95,10 +95,11 @@ const toIso = (s) => (s || '').replace(' ', 'T') + ':00+08:00';
 const fromMsg = (m) => String(m.create_time || '').replace('T', ' ').slice(0, 16);
 
 /** 公司名词典匹配：最长优先子串命中；同公司多岗时按 project_id 升序取确定性首条。
+ * candidates 提供时只在候选内匹配（驾驶舱群精确归因：该群挂载的职位集合）。
  * 返回 project_id 或 null。 */
-export function matchJob(db, text) {
+export function matchJob(db, text, candidates = null) {
   if (!text) return null;
-  const companies = db.prepare(`SELECT project_id, company FROM job_facts
+  const companies = candidates || db.prepare(`SELECT project_id, company FROM job_facts
     WHERE company IS NOT NULL AND company != ''
     ORDER BY LENGTH(company) DESC, project_id ASC`).all();
   const lower = text.toLowerCase();
@@ -117,12 +118,16 @@ export function ingestMessages(db, chat_id, messages, consultant_id = null) {
     VALUES (?,?,?,?,?,?,?,?)`);
   const stVis = consultant_id ? db.prepare(`INSERT OR IGNORE INTO job_message_visibility
     (message_id, consultant_id, ingested_at) VALUES (?,?,?)`) : null;
+  // 驾驶舱群精确归因（0013 起）：该群挂载职位唯一 → 直接归属；多职位 → 候选内文本匹配
+  const chatJobs = db.prepare(`SELECT project_id, company FROM job_facts WHERE chat_id=?
+    ORDER BY LENGTH(company) DESC, project_id ASC`).all(chat_id);
   let inserted = 0, matched = 0, maxTs = '';
   db.exec('BEGIN');
   try {
     for (const m of messages) {
       const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
-      const pid = matchJob(db, text);
+      const pid = chatJobs.length === 1 ? chatJobs[0].project_id
+        : matchJob(db, text, chatJobs.length ? chatJobs : null);
       const r = st.run(m.message_id, chat_id, m.sender?.name || m.sender?.id || '',
         m.msg_type || '', text.slice(0, 4000), fromMsg(m), pid, now());
       if (r.changes > 0) { inserted++; if (pid) matched++; }
@@ -180,27 +185,32 @@ export async function bridgeOnce(db, { consultant_ids, execImpl = lark, api = { 
   const skipped = [];
   let changed = false;
 
-  // 1) 职位盘点（团队共享池）：优先用户令牌直连；无令牌回落 lark-cli（兼容期）
+  // 1) 职位盘点 Bitable（团队共享池）——2026-08-14 起默认关闭：TTC 已是职位权威源
+  // （真 project_id/HC/Pipeline），盘点板的 P-FIX 占位行属「假数据」不再入池
+  // （0012 清理存量）。消息监控（下方第 2 段）不受影响。回滚：BRAINX_BITABLE_ON=1。
+  const BITABLE_ON = process.env.BRAINX_BITABLE_ON === '1';
   let payload = null;
-  if (api) {
-    const token = await firstValidToken(db, cids, fetchImpl);
-    if (token) {
-      try { payload = await fetchBitablePayloadApi(token, fetchImpl); }
-      catch (e) { errors.push(`bitable_api:${String(e.message).slice(0, 120)}`); }
+  if (BITABLE_ON) {
+    if (api) {
+      const token = await firstValidToken(db, cids, fetchImpl);
+      if (token) {
+        try { payload = await fetchBitablePayloadApi(token, fetchImpl); }
+        catch (e) { errors.push(`bitable_api:${String(e.message).slice(0, 120)}`); }
+      }
     }
-  }
-  if (!payload) {
-    try { payload = fetchBitablePayload(execImpl); }
-    catch (e) { errors.push(`bitable_lark:${String(e.message).slice(0, 120)}`); }
-  }
-  if (payload) {
-    for (const cid of cids) {
-      const prev = db.prepare(`SELECT input_hash FROM sync_runs
-        WHERE consultant_id=? AND source='bridge' ORDER BY started_at DESC LIMIT 1`).get(cid);
-      const s = runSync(db, { source: 'bridge', consultant_id: cid, payload });
-      if (!prev || prev.input_hash !== s.input_hash) changed = true;
-      syncs.push({ consultant_id: cid, sync_id: s.sync_id, complete: s.complete,
-                   rows: s.rows_read, errors: s.errors.length });
+    if (!payload) {
+      try { payload = fetchBitablePayload(execImpl); }
+      catch (e) { errors.push(`bitable_lark:${String(e.message).slice(0, 120)}`); }
+    }
+    if (payload) {
+      for (const cid of cids) {
+        const prev = db.prepare(`SELECT input_hash FROM sync_runs
+          WHERE consultant_id=? AND source='bridge' ORDER BY started_at DESC LIMIT 1`).get(cid);
+        const s = runSync(db, { source: 'bridge', consultant_id: cid, payload });
+        if (!prev || prev.input_hash !== s.input_hash) changed = true;
+        syncs.push({ consultant_id: cid, sync_id: s.sync_id, complete: s.complete,
+                     rows: s.rows_read, errors: s.errors.length });
+      }
     }
   }
 
@@ -252,7 +262,45 @@ export async function bridgeOnce(db, { consultant_ids, execImpl = lark, api = { 
           const msgs = await fetchNewMessagesApi(db, cid, chat.chat_id, token, fetchImpl);
           const { inserted, matched } = ingestMessages(db, chat.chat_id, msgs, cid);
           newMessages += inserted; matchedTotal += matched;
-        } catch (e) { errors.push(`msgs:${cid}:${chat.chat_id.slice(0, 10)}`); }
+        } catch (e) {
+          if (String(e.message).includes('230027')) markReauth(db, cid); // 缺 scope（如 group_msg:get_as_user 新加）→ 点亮重登胶囊
+          errors.push(`msgs:${cid}:${chat.chat_id.slice(0, 10)}`);
+        }
+      }
+
+      // 2.5) 驾驶舱群（职位活跃判定数据源）：该顾问所在的驾驶舱群轮流分批拉取，
+      // 每人每轮 25 个（round-robin 游标持久化，若干轮后全覆盖）。
+      // 拉完回写 chat_last_at / chat_msgs_7d（无新消息也回写——沉寂随时间自然生效）。
+      const COCKPIT_BATCH = 25;
+      const cockpitAll = db.prepare(`SELECT DISTINCT chat_id FROM job_facts
+        WHERE chat_id IS NOT NULL AND chat_id != '' AND active_state='OPEN' ORDER BY chat_id`).all()
+        .map((r) => r.chat_id);
+      const mine = cockpitAll.filter((c) => chatIds.has(c));
+      if (mine.length) {
+        const rrKey = `cockpit_rr@${cid}`;
+        const prev = db.prepare('SELECT checkpoint FROM bridge_cursor WHERE source=?').get(rrKey);
+        const offset = prev ? Number(prev.checkpoint) || 0 : 0;
+        const batchN = Math.min(COCKPIT_BATCH, mine.length);
+        const cutoff = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ');
+        const stAct = db.prepare(`UPDATE job_facts SET
+            chat_last_at = (SELECT MAX(sent_at) FROM job_messages WHERE chat_id=?),
+            chat_msgs_7d = (SELECT COUNT(*) FROM job_messages WHERE chat_id=? AND sent_at >= ?)
+          WHERE chat_id=?`);
+        for (let i = 0; i < batchN; i++) {
+          const chatId = mine[(offset + i) % mine.length];
+          try {
+            const msgs = await fetchNewMessagesApi(db, cid, chatId, token, fetchImpl);
+            const { inserted, matched } = ingestMessages(db, chatId, msgs, cid);
+            newMessages += inserted; matchedTotal += matched;
+          } catch (e) {
+            if (String(e.message).includes('230027')) markReauth(db, cid);
+            errors.push(`cockpit:${cid}:${chatId.slice(0, 10)}`);
+          }
+          stAct.run(chatId, chatId, cutoff, chatId);
+        }
+        db.prepare(`INSERT INTO bridge_cursor (source, checkpoint, updated_at) VALUES (?,?,?)
+          ON CONFLICT(source) DO UPDATE SET checkpoint=excluded.checkpoint, updated_at=excluded.updated_at`)
+          .run(rrKey, String((offset + batchN) % mine.length), now());
       }
     }
   }
@@ -287,9 +335,9 @@ export function startBridge(db, bus, { intervalMs, recommendFn, consultantIdsFn,
             }
           }
         }
-        // Bitable 两条通道都断了 = 全员事故，广播；个人令牌失效只提醒本人
+        // 职位源全断 = 全员事故，广播；个人令牌失效只提醒本人
         if (out.syncs.length === 0) {
-          bus?.emit({ type: 'sync_error', message: '职位盘点拉取失败（API 与 lark-cli 均不可用）', at: now() });
+          bus?.emit({ type: 'sync_error', message: '职位源拉取失败（TTC 与 Bitable 均不可用）', at: now() });
         }
         const curSkipped = new Set(out.skipped);
         for (const cid of out.skipped) {

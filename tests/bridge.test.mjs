@@ -11,7 +11,10 @@ import { signSession } from '../src/session.js';
 import http from 'node:http';
 
 let db;
-before(() => { db = openDb(':memory:'); });
+before(() => {
+  process.env.BRAINX_BITABLE_ON = '1'; // 本文件专测 Bitable 通道；生产默认关（0012 起 TTC 为职位权威源）
+  db = openDb(':memory:');
+});
 
 const MSG = (id, text, ts = '2026-08-07 12:00') => ({
   message_id: id, chat_id: 'oc_x', msg_type: 'text', content: text,

@@ -157,7 +157,8 @@ test('migrations：schema_migrations 逐文件记账，重开不重跑', () => {
   assert.deepEqual(rows, ['0001_init.sql', '0002_push_log.sql', '0003_consultants.sql',
                           '0004_bridge.sql', '0005_per_user.sql', '0006_framework.sql',
                           '0007_bitable_fields.sql', '0008_agent12.sql', '0009_switch_app.sql',
-                          '0010_ttc_tokens.sql', '0011_ttc_owner.sql', '0012_manual_fact_overrides.sql']);
+                          '0010_ttc_tokens.sql', '0011_ttc_owner.sql', '0012_drop_placeholder.sql',
+                          '0012_manual_fact_overrides.sql', '0013_chat_activity.sql']);
 });
 
 const TMPDB = join(tmpdir(), `brainx-fw-${process.pid}.db`);
@@ -174,7 +175,7 @@ test('migrations：旧库 user_version=2 兼容——前 2 个文件标记已应
   legacy.close();
   const reopened = openDb(TMPDB);
   const rows = reopened.prepare('SELECT name FROM schema_migrations ORDER BY name').all().map((r) => r.name);
-  assert.equal(rows.length, 12); // 全部记账
+  assert.equal(rows.length, 14); // 全部记账
   const view = reopened.prepare(`SELECT sql FROM sqlite_master WHERE type='view' AND name='current_engagement'`).get();
   assert.match(view.sql, /VIEWED/); // 0006 新视图已应用（含 VIEWED 推导）
   // 0007 扩列已生效
@@ -266,17 +267,17 @@ test('0007：桥接复合行退役、fixture（多岗）保留、非属主关系
     VALUES ('s-bridge', 'felix', 'bridge', 't', 'h', 't'), ('s-fixture', 'felix', 'fixture', 't', 'h', 't')`);
   const insJob = `INSERT INTO job_facts (project_id, company, role, active_state, captured_at, sync_id, raw_json, updated_at)
     VALUES (?,?,?,'OPEN','t',?,'{}','t')`;
-  legacy.prepare(insJob).run('P-OLD-COMPOSITE', 'Rockflow', '产品、工程、运营增长', 's-bridge'); // 桥接旧复合行
+  legacy.prepare(insJob).run('P-FIX-OLDCP', 'Rockflow', '产品、工程、运营增长', 's-bridge'); // 桥接旧复合行
   legacy.prepare(insJob).run('P-FIX-MULTI', '像素律动', '运营增长、工程、产品、算法（多岗）', 's-fixture'); // Felix 策展行
   legacy.prepare(`INSERT INTO job_memberships (consultant_id, project_id, relation, source, valid_from)
     VALUES ('mia', 'P-FIX-MULTI', 'MY_JOB', 'fixture', 't'), ('felix', 'P-FIX-MULTI', 'MY_JOB', 'fixture', 't')`).run();
   legacy.close();
 
-  const db2 = openDb(TMPDB2); // 0007 在此应用
-  assert.equal(db2.prepare(`SELECT active_state FROM job_facts WHERE project_id='P-OLD-COMPOSITE'`).get().active_state,
-    'CLOSED'); // 桥接复合行退役（新解析按单职能重建）
+  const db2 = openDb(TMPDB2); // 0007-0012 在此依次应用（累积终态断言）
+  assert.equal(db2.prepare(`SELECT COUNT(*) n FROM job_facts WHERE project_id='P-FIX-OLDCP'`).get().n,
+    0); // 0007 CLOSED → 0012 零引用删除（P-FIX-% 前缀谓词，生产占位行全在此前缀下）
   assert.equal(db2.prepare(`SELECT active_state FROM job_facts WHERE project_id='P-FIX-MULTI'`).get().active_state,
-    'OPEN'); // fixture（多岗）策展资产保留
+    'CLOSED'); // 0007 保留为 OPEN；0012 因有引用（memberships）只关不删——冻结回放不破
   assert.ok(db2.prepare(`SELECT valid_to FROM job_memberships WHERE consultant_id='mia'`).get().valid_to); // 污染到期
   assert.equal(db2.prepare(`SELECT valid_to FROM job_memberships WHERE consultant_id='felix'`).get().valid_to,
     null); // 属主本人不动

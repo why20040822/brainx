@@ -68,6 +68,11 @@ export function tokenStatus(db, consultant_id) {
  * 新对整体落库）；refresh 被拒或已过期 → 标 needs_reauth=1，返回 null（桥接跳过该顾问，
  * 绝不阻断其他人）。fetchImpl 可注入（测试不打真实网络）。
  */
+/** 手动标记需重登（如 230027 权限缺口：令牌有效但缺新 scope，只能重授权补齐）。 */
+export const markReauth = (db, consultant_id) =>
+  db.prepare('UPDATE consultant_tokens SET needs_reauth=1, updated_at=? WHERE consultant_id=?')
+    .run(new Date().toISOString(), consultant_id);
+
 export async function getValidAccessToken(db, consultant_id, fetchImpl = fetch) {
   const r = db.prepare('SELECT * FROM consultant_tokens WHERE consultant_id=?').get(consultant_id);
   if (!r || r.needs_reauth) return null;
