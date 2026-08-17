@@ -3,6 +3,7 @@
  */
 import './env.js';
 import http from 'node:http';
+import { spawn } from 'node:child_process';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +33,9 @@ const PUBLIC = join(ROOT, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
                '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
                '.svg': 'image/svg+xml', '.png': 'image/png' };
+const FRONTEND_DIR = join(ROOT, 'frontend', 'btex-frontend');
+const FRONTEND_HOST = process.env.BRAINX_FRONTEND_HOST || '127.0.0.1';
+const FRONTEND_PORT = Number(process.env.BRAINX_FRONTEND_PORT || 4321);
 
 /** 目录穿越判定：必须带分隔符前缀——裸 startsWith(base) 会把兄弟目录
  * （public-x/… 前缀同为 /…/public）误判为内部（2026-08-10 框架修正）。 */
@@ -42,6 +46,27 @@ const json = (res, code, obj) => {
   res.end(JSON.stringify(obj));
 };
 const err = (res, code, codeStr, message) => json(res, code, { error: { code: codeStr, message } });
+
+const proxyFrontend = (req, res, target) => {
+  const targetPath = req.url === '/login' || req.url?.startsWith('/login?')
+    ? `/${req.url.slice('/login'.length)}`
+    : req.url || '/';
+  const proxy = http.request({
+    hostname: target.host,
+    port: target.port,
+    path: targetPath,
+    method: req.method,
+    headers: { ...req.headers, host: `${target.host}:${target.port}` },
+  }, (upstream) => {
+    res.writeHead(upstream.statusCode || 502, upstream.headers);
+    upstream.pipe(res);
+  });
+  proxy.on('error', (e) => {
+    if (!res.headersSent) err(res, 502, 'FRONTEND_UNAVAILABLE', `前端服务不可用：${e.message}`);
+    else res.destroy(e);
+  });
+  req.pipe(proxy);
+};
 
 async function body(req) {
   let s = '';
@@ -372,6 +397,9 @@ export function createServer(db = openDb(), deps = {}) {
       }
       return;
     }
+    if (deps.frontendTarget && !path.startsWith('/api/')) {
+      return proxyFrontend(req, res, deps.frontendTarget);
+    }
     // 静态文件（public/），/ → index.html，/login → login.html
     if (req.method === 'GET') {
       if (path === '/') path = '/index.html';
@@ -388,6 +416,7 @@ export function createServer(db = openDb(), deps = {}) {
     err(res, 404, 'NOT_FOUND', `${req.method} ${path}`);
   });
   server.bus = bus; // 主块/测试用来广播桥接事件
+  server.frontendTarget = deps.frontendTarget || null;
   return server;
 }
 
@@ -396,7 +425,31 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // 只绑回环：工作台含未脱敏业务数据，不应对局域网暴露（BRAINX_HOST 显式覆盖除外）
   const host = process.env.BRAINX_HOST || '127.0.0.1';
   const db = openDb();
-  const server = createServer(db);
+  const frontendTarget = process.env.BRAINX_FRONTEND_OFF === '1'
+    ? null
+    : { host: FRONTEND_HOST, port: FRONTEND_PORT };
+  const server = createServer(db, { frontendTarget });
+  let frontendProcess = null;
+  if (frontendTarget && existsSync(join(FRONTEND_DIR, 'package.json'))) {
+    frontendProcess = spawn('npm', ['run', 'start', '--', '--host', FRONTEND_HOST, '--port', String(FRONTEND_PORT)], {
+      cwd: FRONTEND_DIR,
+      env: { ...process.env, PORT: String(FRONTEND_PORT), HOSTNAME: FRONTEND_HOST },
+      stdio: 'inherit',
+    });
+    frontendProcess.on('error', (e) => console.error(`[frontend] 启动失败：${e.message}`));
+    frontendProcess.on('exit', (code, signal) => {
+      if (code !== 0 && signal !== 'SIGTERM') console.error(`[frontend] 已退出 code=${code} signal=${signal || '-'}`);
+    });
+    console.log(`前端服务: http://${FRONTEND_HOST}:${FRONTEND_PORT}（由 Brain X 代理）`);
+  } else if (frontendTarget) {
+    console.warn(`[frontend] 未找到 ${FRONTEND_DIR}，回退到 public/`);
+  }
+  const shutdown = () => {
+    if (frontendProcess && !frontendProcess.killed) frontendProcess.kill('SIGTERM');
+    server.close(() => process.exit(0));
+  };
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
   server.listen(port, host, () => console.log(`Brain X 工作台: http://${host}:${port}`));
   // 桥接常驻：BRAINX_BRIDGE_INTERVAL_MS（默认 180s）；BRAINX_BRIDGE_OFF=1 关闭
   if (process.env.BRAINX_BRIDGE_OFF !== '1') {
