@@ -13,6 +13,7 @@ import {
   mapRecommendation,
   mapReplayData,
   mapSyncStatus,
+  BrainxApiError,
 } from "../app/brainx-api.ts";
 
 const sampleRec = {
@@ -130,6 +131,14 @@ test("maps backend sync status, including reauth", () => {
   assert.equal(mapSyncStatus(null).state, "EMPTY");
   const reauth = mapSyncStatus({ state: "READY" }, { needs_reauth: true });
   assert.equal(reauth.state, "AUTH_EXPIRED");
+});
+
+test("normalizes backend error envelopes by HTTP semantics", () => {
+  assert.equal(new BrainxApiError("登录失效", 401, "UNAUTHORIZED").kind, "AUTH");
+  assert.equal(new BrainxApiError("状态冲突", 409, "CONFLICT").kind, "CONFLICT");
+  assert.equal(new BrainxApiError("参数错误", 422, "BAD_REQUEST").kind, "VALIDATION");
+  assert.equal(new BrainxApiError("服务不可用", 502, "UPSTREAM").kind, "UNAVAILABLE");
+  assert.equal(new BrainxApiError("未知错误", 404, "NOT_FOUND").kind, "HTTP");
 });
 
 test("maps events and outcomes with local display fields", () => {

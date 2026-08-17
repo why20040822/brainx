@@ -1,6 +1,6 @@
 # B-tex Job Decision Workbench
 
-This is a self-contained frontend prototype. It does not include the BrainX backend, Feishu authorization, a database, or real business data.
+This package contains the React/Vinext frontend and its typed BrainX API adapter. In the BrainX repository it runs in connected mode through `http://127.0.0.1:3100`; the original local demo fallback remains available when the backend is unavailable or the user is not logged in.
 
 ## Requirements
 
@@ -16,7 +16,7 @@ npm install
 npm run dev
 ```
 
-Open the local URL shown by the terminal, usually `http://localhost:3000`.
+When run inside BrainX, start `node src/server.js` from the backend root and open `http://127.0.0.1:3100`. Standalone frontend development may use the URL printed by `npm run dev`.
 
 ## Verify
 
@@ -28,6 +28,7 @@ This runs the production build and the static frontend checks.
 
 ## Prototype boundaries
 
-- Jobs, sync, authorization, engagements, outcomes, replay, and notifications are local mock state.
-- Browser `localStorage` preserves the demo state; clear site data to reset it.
-- Replace `app/decision-demo.ts` with a backend adapter when integrating BrainX. The frontend must not recompute ranking or treat `UNKNOWN` as zero.
+- In connected mode, jobs, sync, authorization, engagements, outcomes, replay, radar, clients, profile keywords and SSE notifications come from the BrainX API.
+- Dynamic alerts, the data-source showcase and push preview remain explicitly marked demo surfaces because the current backend has no corresponding API.
+- Offline mode uses browser `localStorage` only as demo fallback state; it is never treated as persisted business truth.
+- The frontend never recomputes backend ranking or treats `UNKNOWN` as zero.

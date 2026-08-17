@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-html-link-for-pages */
 
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Check, ChevronRight, Menu, X } from "lucide-react";

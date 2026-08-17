@@ -53,11 +53,11 @@ export default defineConfig(async () => {
       ...(isCodexSeatbeltSandbox
         ? { watch: { useFsEvents: false, usePolling: true } }
         : {}),
-      // Brain X 后端（btex/brainx，node src/server.js → http://127.0.0.1:3000）。
+      // Brain X 后端（node src/server.js → http://127.0.0.1:3100）。
       // /api 经代理同源转发：无 CORS，会话 Cookie 自然透传。
       proxy: {
         "/api": {
-          target: process.env.BRAINX_PROXY_TARGET || "http://127.0.0.1:3000",
+          target: process.env.BRAINX_PROXY_TARGET || "http://127.0.0.1:3100",
           changeOrigin: false,
         },
       },

@@ -1,6 +1,7 @@
 "use client";
+/* eslint-disable @next/next/no-html-link-for-pages */
 
-import { ArrowRight, Check, ChevronRight, CircleHelp, Menu, PanelRight, ShieldCheck, Sparkles, X } from "lucide-react";
+import { ArrowRight, Check, ChevronRight, CircleHelp, Menu, PanelRight, ShieldCheck, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import "./showcase.css";
 

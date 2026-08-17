@@ -2,7 +2,7 @@
 
 面向猎头顾问的职位判断与承接工作台前端原型。它把候选职位、判断依据、承接状态、结果回写、同步状态与通知收在一个可交互的本地演示中。
 
-> 当前版本只使用本地 mock 数据，不请求 BrainX、飞书或任何外部服务。所有可点击操作仅写入浏览器的 `localStorage`；它们用于演示后端接入后的界面与状态流，不代表真实业务数据。
+> 在 BrainX 单地址运行模式下，工作台、承接、结果、回放、雷达、客户洞察、画像、同步和 SSE 通知均通过 `app/brainx-api.ts` 使用真实后端接口。后端不可达或未登录时才回退到本地演示状态；动态预警、数据源展示和推送预览仍明确标记为演示模块。
 
 ## 先在本地跑起来
 
@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-打开终端显示的本地地址；当前开发约定通常是 <http://localhost:4320>。
+集成到 BrainX 后，打开 <http://127.0.0.1:3100>。BrainX 会自动启动内部 Vinext 服务并代理页面；独立开发时才使用终端输出的前端端口。
 
 常用验证命令：
 
@@ -39,7 +39,7 @@ npm run lint
 | 客户洞察 | 查看客户招聘窗口、风险与职位概况 | 过滤、排序、最多三家客户对比 |
 | 动态预警 | 处理需要确认的变化 | 查看依据、转成今日任务、标记已处理 |
 | 判断策略 | 调整三层软权重 | 只有总和为 100% 才允许保存演示策略 |
-| 同步、身份与通知 | 模拟完整/失败同步、授权、每日提醒 | 全部在同一右侧面板内打开，不离开当前页面 |
+| 同步、身份与通知 | connected 模式使用 BrainX；离线时为演示回退 | 全部在同一右侧面板内打开，不离开当前页面 |
 
 ## 职位承接与结果：先理解这条状态流
 
@@ -100,9 +100,10 @@ type WorkbenchAdapter = {
 
 ## 后端已接入：Brain X（`btex/brainx`）
 
-本仓库已完成与 [Brain X 后端](https://github.com/zhongxiaomi06-sudo/brainx)（工作区 `btex/brainx`，零依赖 Node ≥22.5 + SQLite + 飞书 OAuth）的对接。适配层集中在 `app/brainx-api.ts`：
+本仓库已完成与 [Brain X 后端](https://github.com/zhongxiaomi06-sudo/brainx)（零依赖 Node ≥22.5 + SQLite + 飞书 OAuth）的对接。适配层集中在 `app/brainx-api.ts`，并为已接入 API 定义响应契约类型：
 
 - 纯函数映射器（`mapRecommendation` / `mapSyncStatus` / `mapEvents` / `mapOutcomes` / `mapReplayData` 等）把后端 snake_case 响应映射为工作台类型；HC 为 `null` 时展示 `UNKNOWN`，绝不当成 0。
+- `brainxFetch<T>()` 统一处理成功响应、两种错误信封和 401/409/422/5xx 错误分类；connected 交互只使用后端返回的 `legal_actions`。
 - `getSnapshot()` 一次拉取 工作台概览 + Top10 推荐 + 逐职位详情（承接态 / `legal_actions` / 事件 / 结果 / 决策编号）+ 画像。
 - 承接命令走 `POST /api/v1/opportunities/:id/engagement`：每个手势生成幂等键，`ACCEPT` 二次确认（`confirm:true`），`DISMISS` 必传后端枚举原因；允许动作**一律以后端返回的 `legal_actions` 为准**，前端不自行推断权限。
 - 结果回写 `POST /api/v1/outcomes`、回放 `GET /api/v1/decisions/:id/replay`（冻结快照）、同步 `POST /api/v1/sync-runs` + `POST /api/v1/recommendations/run`、通知 `GET /api/v1/events`（SSE）、画像 `GET/PUT /api/v1/profile`。
@@ -110,13 +111,12 @@ type WorkbenchAdapter = {
 ### 一起跑起来
 
 ```bash
-# 1. 后端（另一终端，工作区 btex/brainx）
-cd ../brainx
+# 1. 后端（BrainX 根目录）
 cp .env.example .env      # 本地开发写入：BRAINX_DEV_AUTH=1、BRAINX_BRIDGE_OFF=1
-node src/server.js        # http://127.0.0.1:3000，DB 自动迁移 + 花名册播种
+node src/server.js        # http://127.0.0.1:3100，自动启动并代理本前端
 
-# 2. 前端（本仓库）
-npm run dev -- -H 0.0.0.0 -p 4320   # http://localhost:4320，/api 经 vite 代理到 3000
+# 2. 独立前端开发（可选）
+npm run dev -- -H 0.0.0.0 -p 4320
 ```
 
 打开页面后点右上角身份 → 「登录 Brain X 后端」选择顾问（felix/mia/york 等，开发后门 `BRAINX_DEV_AUTH=1`）。首次登录若同步面板显示「尚未同步」，点「重新同步」即可拉取 fixture 快照并冻结新推荐（也可在后端跑 `node bin/brainx-sync.mjs && node bin/brainx-recommend.mjs`）。
@@ -146,9 +146,9 @@ cd ../brainx && node bin/brainx-adapter.mjs
 - `node tests/e2e-browser-check.mjs`：headless Chrome 全链路（登录 → 连接 → 关注 → 接单确认 → 回写结果 → 刷新持久化 → 暂不考虑原因枚举 → 冷却期拦截 → 同步 → 退出回退），需前后端都已启动。
 - 后端测试：`cd ../brainx && npm test`（96 例）。
 
-### 尚未接入后端、仍为本地演示的模块
+### 明确保持演示态的模块
 
-动态预警与数据源页仍是本地演示数据（后端暂无对应端点）；判断策略页的三层滑块编辑器在离线模式下可用，connected 模式改为展示后端固定六维权重与 `policy_version`，并通过 `/api/v1/profile` 编辑画像关键词。
+动态预警、数据源页和推送预览仍是本地演示数据（后端暂无对应端点）；这些页面会明确显示演示/尚未接入说明。判断策略页的三层滑块编辑器在离线模式下可用，connected 模式展示后端固定六维权重与 `policy_version`，并通过 `/api/v1/profile` 编辑画像关键词。
 
 职位雷达与客户洞察已接入后端：
 
@@ -168,7 +168,7 @@ cd ../brainx && node bin/brainx-adapter.mjs
 
 ## 验证依据
 
-当前自动测试在 [`tests/rendered-html.test.mjs`](./tests/rendered-html.test.mjs) 中覆盖了：双分区、承接状态驱动分区、权限边界、结果回写入口、回放、同步、通知、侧栏承接列表、策略硬规则，以及驾驶舱数据导入不虚构运营事实。
+当前自动测试覆盖接口映射、错误分类、双分区、承接状态驱动分区、权限边界、结果回写入口、回放、同步、通知、侧栏承接列表、策略硬规则，以及驾驶舱数据导入不虚构运营事实。
 
 ```bash
 npm test
@@ -178,7 +178,6 @@ npm test
 
 ## 当前限制
 
-- 没有真实登录、飞书授权、通知推送、数据库或 BrainX API 调用。
-- 没有服务端排序、权限校验与冻结快照；目前只模拟其前端表面。
-- 工作台演示数据与职位雷达数据是不同来源的本地样本，不能视为同一套生产事实。
-- 不要把本地状态、演示提示或 UI 截图当作后端接口已经对接成功的证据。
+- 真实飞书 OAuth 仍需后端配置 App Secret；本地可用 `BRAINX_DEV_AUTH=1`。
+- 动态预警、数据源和推送预览没有对应后端 API，不能视作生产事实。
+- offline 的本地状态、演示提示或 UI 截图不能作为后端已经写入的证据。

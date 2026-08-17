@@ -14,7 +14,7 @@ const BASE = process.env.BRAINX_E2E_BASE || "http://127.0.0.1:3100/";
 
 const chrome = spawn(CHROME, [
   "--headless=new", `--remote-debugging-port=${DEBUG_PORT}`,
-  "--user-data-dir=/tmp/brainx-e2e-chrome", "--no-first-run", "--no-default-browser-check",
+  `--user-data-dir=/tmp/brainx-e2e-chrome-${process.pid}`, "--no-first-run", "--no-default-browser-check",
   "about:blank",
 ], { stdio: "ignore" });
 
@@ -75,7 +75,8 @@ try {
 
   // 1) 未登录 → 演示模式回退
   const offlineText = await evaluate("document.body.innerText");
-  console.log(`[1] 未登录回退演示模式: ${offlineText.includes("演示模式") ? "PASS" : "FAIL"}`);
+  const offlineMode = await evaluate("document.querySelector('.rail-status')?.getAttribute('title') || ''");
+  console.log(`[1] 未登录回退演示模式: ${(offlineText.includes("演示模式") || offlineMode === "演示模式") ? "PASS" : "FAIL"}`);
 
   // 2) dev 登录 felix → connected
   await evaluate(`fetch('/api/v1/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({consultant_id:'felix'})}).then(r=>r.status)`, true);
@@ -167,7 +168,7 @@ try {
   await sleep(1500);
   const radarText = await evaluate("document.body.innerText");
   const radarRowCount = await evaluate(`document.querySelectorAll('.data-table tbody tr').length`);
-  const cockpitLabel = await evaluate(`(() => { const t = [...document.querySelectorAll('.filter-select-trigger')].find(x => x.textContent.includes('来源')); t?.click(); return true; })()`);
+  await evaluate(`(() => { const t = [...document.querySelectorAll('.filter-select-trigger')].find(x => x.textContent.includes('来源')); t?.click(); return true; })()`);
   await sleep(300);
   const sourceOptions = await evaluate(`[...document.querySelectorAll('.filter-select-menu button')].map(b => b.textContent).join("|")`);
   await evaluate(`window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))`);
@@ -191,7 +192,8 @@ try {
   await ws.send("Page.reload");
   await sleep(4000);
   const afterLogout = await evaluate("document.body.innerText");
-  console.log(`[7] 退出后回退演示模式: ${afterLogout.includes("演示模式") ? "PASS" : "FAIL"}`);
+  const afterLogoutMode = await evaluate("document.querySelector('.rail-status')?.getAttribute('title') || ''");
+  console.log(`[7] 退出后回退演示模式: ${(afterLogout.includes("演示模式") || afterLogoutMode === "演示模式") ? "PASS" : "FAIL"}`);
 } catch (e) {
   console.error("E2E FAILED:", e.message);
   process.exitCode = 1;
