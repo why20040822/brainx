@@ -19,13 +19,13 @@ test('花名册：种子幂等 + open_id 匹配 + 在线 upsert 不丢画像', (
   assert.equal(n, 6); // felix/mia/york + 2026-08-13 扩编 wendy/linda/shanon（York团队&人才库共创群）
   seedRoster(db);     // 再播一次不报错
   const all = listConsultants(db);
-  assert.equal(all.length, 6);
+  assert.equal(all.length, 7);
   const felix = findByOpenId(db, 'ou_3b30bc83806e157d9af0cd9188d7ab8d');
   assert.equal(felix.consultant_id, 'felix');
   assert.ok(felix.profile_keywords.includes('增长')); // 画像合并进来了
   // 在线刷新同一 open_id → 不重复、不覆盖画像
   upsertMembers(db, [{ name: 'Felix 黄鑫', member_id: 'ou_3b30bc83806e157d9af0cd9188d7ab8d' }]);
-  assert.equal(listConsultants(db).length, 6);
+  assert.equal(listConsultants(db).length, 7);
   assert.ok(findByOpenId(db, 'ou_3b30bc83806e157d9af0cd9188d7ab8d').profile_keywords.includes('增长'));
   assert.equal(findByOpenId(db, 'ou_unknown'), null);
 });

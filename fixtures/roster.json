@@ -1,5 +1,11 @@
 [
   {
+    "consultant_id": "otto",
+    "display_name": "Otto 石珅",
+    "profile_keywords": [],
+    "profile_note": "飞书联系人邀请待确认；尚未绑定 open_id"
+  },
+  {
     "consultant_id": "felix",
     "display_name": "Felix 黄鑫",
     "open_id": "ou_3b30bc83806e157d9af0cd9188d7ab8d",
