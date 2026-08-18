@@ -143,6 +143,9 @@ export type BackendEngagementResponse = { ok: boolean; already?: boolean; event_
 export type BackendRecommendationRun = { blocked?: boolean; reason?: string; run_id?: string | null; items?: BackendRecommendation[] };
 export type BackendOutcomeResponse = { ok: boolean; already?: boolean; outcome_id?: string | number };
 export type BackendProfileUpdate = { ok: boolean; consultant_id: string; profile_keywords?: string[]; profile_note?: string };
+export type AssistantMessage = { role: "user" | "assistant"; content: string };
+export type AssistantContext = { page: string; opportunity_id?: string | null };
+export type AssistantChatOptions = { question: string; history: AssistantMessage[]; context: AssistantContext; signal?: AbortSignal };
 
 export class BrainxApiError extends Error {
   status: number;
@@ -598,6 +601,44 @@ export async function brainxFetch<T = unknown>(
     throw new BrainxApiError(message, res.status, code, data as BrainxErrorPayload);
   }
   return data as T;
+}
+
+/** 只读助手的流式接口；响应内容不经过 JSON 客户端封装，避免吞掉 SSE 增量。 */
+export async function streamAssistant(
+  options: AssistantChatOptions,
+  onText: (text: string) => void,
+  onError: (message: string) => void,
+): Promise<void> {
+  const res = await fetch("/api/v1/assistant/chat", {
+    method: "POST", credentials: "same-origin", signal: options.signal,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question: options.question, history: options.history, context: options.context }),
+  });
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try { const data = await res.json(); message = data?.error?.message || data?.error || message; } catch { /* text fallback */ }
+    throw new BrainxApiError(String(message), res.status);
+  }
+  if (!res.body) throw new BrainxApiError("助手没有返回内容", 502);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const lines = buffer.split(/\r?\n/); buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.startsWith("data:")) continue;
+        try {
+          const data = JSON.parse(line.slice(5).trim()) as { text?: string; message?: string };
+          if (data.text) onText(data.text);
+          if (data.message) onError(data.message);
+        } catch { /* ignore malformed provider frame */ }
+      }
+      if (done) break;
+    }
+  } finally { reader.releaseLock(); }
 }
 
 /** 读取完整工作台快照：概览 + 推荐 + 逐职位详情（承接态/允许动作/事件/结果）+ 画像。

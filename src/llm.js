@@ -29,6 +29,52 @@ export function isLlmConfigured() {
   return !!(LLM_BASE_URL && LLM_API_KEY && LLM_MODEL);
 }
 
+/** 流式文本对话。回调收到 OpenAI-compatible delta 文本；Key 永不离开服务端。 */
+export async function chatStream(messages, { timeout = LLM_TIMEOUT_MS, signal, onText } = {}) {
+  if (!isLlmConfigured()) throw new Error('LLM_NOT_CONFIGURED');
+  const url = LLM_BASE_URL.replace(/\/$/, '') + '/chat/completions';
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeout);
+  if (signal) signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${LLM_API_KEY}` },
+      body: JSON.stringify({ model: LLM_MODEL, messages, stream: true, temperature: 0.2 }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      const error = new Error(`LLM_HTTP_${res.status}`);
+      error.status = res.status;
+      error.detail = body.slice(0, 200);
+      throw error;
+    }
+    if (!res.body) throw new Error('LLM_EMPTY_STREAM');
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          const text = JSON.parse(payload)?.choices?.[0]?.delta?.content;
+          if (text) onText?.(text);
+        } catch { /* 忽略供应商的非 JSON 心跳 */ }
+      }
+      if (done) break;
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** 从模型回复里抠出 JSON 对象。兼容三种返回：纯 JSON、```json 代码块、带前后说明文字。 */
 function extractJson(text) {
   if (!text) throw new Error('LLM 空回复');

@@ -27,6 +27,7 @@ import { quota as ttcQuota } from './ttcsdk/user.js';
 import { TtcApiError } from './ttcsdk/http.js';
 import { radarRows, clientRows } from './radar.js';
 import { effectiveJob, effectiveFactPayload, updateFactOverrides } from './facts.js';
+import { chatStream, isLlmConfigured } from './llm.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
@@ -145,6 +146,50 @@ export function createServer(db = openDb(), deps = {}) {
     'DELETE /api/v1/session': (req, res) => {
       res.writeHead(204, { 'Set-Cookie': 'brainx_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' });
       res.end();
+    },
+
+    'POST /api/v1/assistant/chat': async (req, res, cid) => {
+      const b = await body(req);
+      const question = typeof b?.question === 'string' ? b.question.trim() : '';
+      if (!question || question.length > 4000) return err(res, 422, 'INVALID_QUESTION', '问题不能为空且不能超过 4000 字');
+      if (!isLlmConfigured()) return err(res, 503, 'LLM_NOT_CONFIGURED', 'DeepSeek 尚未配置，请联系管理员设置服务器环境变量');
+      const requestedHistory = Array.isArray(b?.history) ? b.history : [];
+      const history = requestedHistory.slice(-12).filter((m) =>
+        m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }));
+      const run = latestRun(db, cid);
+      const sync = latestSync(db, cid);
+      const commitments = commitmentSummary(db, cid);
+      const selectedId = typeof b?.context?.opportunity_id === 'string' ? b.context.opportunity_id : null;
+      const items = (run?.items || []).slice(0, 10).map((item) => ({
+        project_id: item.job?.project_id, company: item.job?.company, role: item.job?.role,
+        score: item.score, action: item.action, confidence_band: item.confidence_band,
+        evidence_coverage: item.evidence_coverage, reasons: item.reasons, risks: item.risks,
+      }));
+      const selected = selectedId ? items.find((item) => item.project_id === selectedId) || null : null;
+      const context = JSON.stringify({
+        consultant_id: cid,
+        page: typeof b?.context?.page === 'string' ? b.context.page.slice(0, 80) : 'today',
+        selected_opportunity: selected,
+        recommendations: items,
+        sync: sync ? { state: sync.complete ? 'READY' : 'INCOMPLETE', updated_at: sync.completed_at, rows_read: sync.rows_read } : { state: 'EMPTY' },
+        commitments: commitments.items?.slice(0, 20) || [],
+      });
+      const system = `你是 BrainX 工作台的只读业务助手。你只能依据提供的当前顾问可见上下文回答，不得编造事实，不得声称已经执行任何操作。你不能调用工具、SQL、Shell，也不能修改职位、承接、结果或画像。没有数据时明确说“当前后端没有这项数据”。回答使用简洁中文。当前上下文：${context}`;
+      res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive' });
+      res.write(`event: meta\ndata: ${JSON.stringify({ ok: true, read_only: true })}\n\n`);
+      try {
+        await chatStream([{ role: 'system', content: system }, ...history, { role: 'user', content: question }], {
+          signal: req.signal,
+          onText: (text) => { if (!res.destroyed) res.write(`data: ${JSON.stringify({ text })}\n\n`); },
+        });
+        if (!res.destroyed) res.write('event: done\ndata: {}\n\n');
+      } catch (e) {
+        if (!res.destroyed) {
+          const status = e?.status === 429 ? 429 : e?.status >= 500 ? 504 : 502;
+          res.write(`event: error\ndata: ${JSON.stringify({ code: status === 429 ? 'LLM_RATE_LIMIT' : 'LLM_UNAVAILABLE', message: status === 429 ? 'DeepSeek 请求过于频繁，请稍后重试' : 'DeepSeek 暂时不可用，请稍后重试' })}\n\n`);
+        }
+      } finally { if (!res.destroyed) res.end(); }
     },
 
     'GET /api/v1/workbench': (req, res, cid) => {
