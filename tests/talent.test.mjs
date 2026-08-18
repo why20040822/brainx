@@ -25,6 +25,36 @@ test('upsertTalent：按 dedupeKey 幂等（同手机号命中更新而非重复
   assert.equal(t.status, 'contacted');
 });
 
+test('去重质量：同名但强标识不同 → 视为两个人，不合并', async () => {
+  const a = await upsertTalent({ name: '王伟', phone: '13800000001' });
+  const b = await upsertTalent({ name: '王伟', phone: '13900000002' }); // 同名不同手机
+  assert.equal(b.created, true, '不同手机的同名者应新建');
+  assert.notEqual(b.id, a.id);
+});
+
+test('去重质量：库里同名者已有手机，新来的无标识同名者 → 不误并入，应新建', async () => {
+  const a = await upsertTalent({ name: '李强', phone: '13800000003' });
+  const b = await upsertTalent({ name: '李强' }); // 无手机无邮箱
+  assert.equal(b.created, true, '无强标识者不应并入已有强标识的同名人');
+  assert.notEqual(b.id, a.id);
+});
+
+test('去重质量：两条都无强标识的同名 → 兜底合并为一人', async () => {
+  const a = await upsertTalent({ name: '赵敏', summary: '一稿' });
+  const b = await upsertTalent({ name: '赵敏', summary: '二稿' });
+  assert.equal(b.created, false, '均无强标识的同名应按姓名兜底合并');
+  assert.equal(b.id, a.id);
+});
+
+test('去重质量：邮箱命中同一人，并回填缺失的手机', async () => {
+  const a = await upsertTalent({ name: '孙丽', email: 'sun@example.com' });
+  const b = await upsertTalent({ name: '孙丽', email: 'sun@example.com', phone: '13800000004' });
+  assert.equal(b.created, false);
+  assert.equal(b.id, a.id);
+  const t = await getTalent(a.id);
+  assert.equal(t.phone, '13800000004', '命中后应回填原本缺失的手机');
+});
+
 test('attachTags：自动建标签字典并去重挂载', async () => {
   const { id } = await upsertTalent({ name: '李四' });
   await attachTags(id, [{ name: '海外投放', category: 'skill' }, { name: '海外投放', category: 'skill' }]);
