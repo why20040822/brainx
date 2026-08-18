@@ -605,29 +605,42 @@ function DrawerSection({title,children,action}:{title:string;children:React.Reac
 // —— 候选供给（人才侧适配层的前端呈现）——
 // 数据形状对齐后端 talent-supply.js 的 TalentSupplySnapshot（GET /opportunities/:id/talent-supply）。
 // 供给分析【旁路】：只做展示，绝不并入 job.finalScore（与后端「不进入基础评分」纪律一致）。
-type SupplySnapshot={matchableTalentCount:number;supplyDifficulty:"low"|"medium"|"high";matchingSuggestion:string;reactivatableTalentCount:number;topMatches:{name:string;score:number}[]};
-const supplyDifficultyMeta:Record<SupplySnapshot["supplyDifficulty"],{label:string;tone:string}>={low:{label:"供给充足",tone:"ok"},medium:{label:"供给适中",tone:"warn"},high:{label:"供给偏紧",tone:"risk"}};
-const talentPoolSeed=["王航·海外投放","陈墨·增长运营","李默·GTM 负责人","周屿·达人营销","苏黎·效果广告","林越·品牌市场","何洲·用户增长","顾原·渠道拓展"];
-function deriveSupply(job:DecisionJob):SupplySnapshot{
- let h=0;for(const ch of job.id)h=(h*31+ch.charCodeAt(0))>>>0;
- const count=h%9;
- const difficulty:SupplySnapshot["supplyDifficulty"]=count>=6?"low":count>=3?"medium":"high";
- const suggestion=count===0?"暂无可匹配候选，建议先扩搜或激活沉睡人才":difficulty==="high"?`仅 ${count} 名可匹配候选，供给偏紧，优先精准触达`:difficulty==="medium"?`${count} 名候选可推进，建议按匹配分分层触达`:`${count} 名候选可选，供给充足，可快速起量`;
- const topMatches=Array.from({length:Math.min(count,3)},(_,i)=>({name:talentPoolSeed[(h+i)%talentPoolSeed.length],score:Number((0.9-((h>>(i+1))%30)/100).toFixed(2))})).sort((a,b)=>b.score-a.score);
- return {matchableTalentCount:count,supplyDifficulty:difficulty,matchingSuggestion:suggestion,reactivatableTalentCount:h%3,topMatches};
-}
-function TalentSupplySection({job}:{job:DecisionJob}){
- const s=deriveSupply(job);
- const meta=supplyDifficultyMeta[s.supplyDifficulty];
+// 数据来源：真库匹配算法 supply-match-v1（技能0.5 + 意向0.3 + 摘要0.2）。前端不再造数——
+// connected 且开关开启时拉真实结果；未登录/未开启/失败则显示占位说明，绝不伪造数字。
+const supplyDifficultyMeta:Record<"low"|"medium"|"high",{label:string;tone:string}>={low:{label:"供给充足",tone:"ok"},medium:{label:"供给适中",tone:"warn"},high:{label:"供给偏紧",tone:"risk"}};
+function TalentSupplySection({job,mode}:{job:DecisionJob;mode:"connecting"|"connected"|"offline"}){
+ const [snap,setSnap]=useState<TalentSupplySnapshot|null>(null);
+ const [state,setState]=useState<"idle"|"loading"|"ready"|"disabled"|"error">("idle");
+ useEffect(()=>{
+  if(mode!=="connected"){setState("disabled");return;}
+  let alive=true;setState("loading");
+  getTalentSupply(job.id)
+   .then(s=>{if(!alive)return;if(s&&s.enabled){setSnap(s);setState("ready");}else{setState("disabled");}})
+   .catch(()=>{if(alive)setState("error");});
+  return()=>{alive=false;};
+ },[job.id,mode]);
+
+ if(state==="ready"&&snap){
+  const meta=supplyDifficultyMeta[snap.supplyDifficulty||"high"];
+  return <DrawerSection title="候选供给（人才侧参考）">
+   <div className="supply-head">
+    <div className="supply-count"><strong>{snap.matchableTalentCount??0}</strong><span>可匹配候选</span></div>
+    <span className={`supply-badge ${meta.tone}`}>{meta.label}</span>
+    {(snap.reactivatableTalentCount??0)>0&&<span className="supply-reactivate">可激活沉睡 {snap.reactivatableTalentCount} 人</span>}
+   </div>
+   <p className="supply-suggestion">{snap.matchingSuggestion}</p>
+   {(snap.topMatches?.length??0)>0&&<div className="supply-matches">{snap.topMatches!.map(m=><div key={m.talentId} className="supply-match"><b>{m.name}</b><span>匹配 {Math.round(m.score*100)}%{m.matched?.length?` · ${m.matched.slice(0,3).join("、")}`:""}</span></div>)}</div>}
+   <p className="snapshot-note">来源 {snap.algo||"talent-supply"} · 真库匹配 · 不计入最终得分</p>
+  </DrawerSection>;
+ }
  return <DrawerSection title="候选供给（人才侧参考）">
-  <div className="supply-head">
-   <div className="supply-count"><strong>{s.matchableTalentCount}</strong><span>可匹配候选</span></div>
-   <span className={`supply-badge ${meta.tone}`}>{meta.label}</span>
-   {s.reactivatableTalentCount>0&&<span className="supply-reactivate">可激活沉睡 {s.reactivatableTalentCount} 人</span>}
-  </div>
-  <p className="supply-suggestion">{s.matchingSuggestion}</p>
-  {s.topMatches.length>0&&<div className="supply-matches">{s.topMatches.map(m=><div key={m.name} className="supply-match"><b>{m.name}</b><span>匹配 {Math.round(m.score*100)}%</span></div>)}</div>}
-  <p className="snapshot-note">仅供参考 · 不计入最终得分 · 来源 talent-supply 适配层</p>
+  <p className="supply-suggestion muted">
+   {state==="loading"?"正在从人才库计算候选供给…":
+    state==="error"?"供给计算暂不可用（人才库接口未响应）":
+    mode!=="connected"?"离线演示态不显示供给；登录并连通后端后展示真库匹配结果。":
+    "供给分析未开启（需设 BRAINX_TALENT_SUPPLY=1）或人才库暂无候选。"}
+  </p>
+  <p className="snapshot-note">旁路只读 · 不计入最终得分</p>
  </DrawerSection>;
 }
 
