@@ -83,8 +83,23 @@ export function scoreJob(job, relation, ctx) {
   const text = `${job.company} ${job.role} ${job.pipeline || ''}`;
   const dims = {};
 
-  // 方向匹配 25%：画像关键词 + 历史项目关键词
-  dims.direction = kwOverlap(text, ctx.profile_keywords);
+  // 方向匹配 25%：三级降级，避免冷启动顾问被「画像为空」白扣分。
+  //  ① 有画像关键词 → 关键词重合（主信号）。
+  //  ② 无画像但有历史主做项目 → 用历史文本重合兜底（老顾问即便没配画像也有方向信号）。
+  //  ③ 两者都无（纯冷启动）→ 记 null（缺失、不惩罚、不计入 coverage），而非 0 分硬扣 25% 权重。
+  if (ctx.profile_keywords && ctx.profile_keywords.length) {
+    dims.direction = kwOverlap(text, ctx.profile_keywords);
+  } else if (ctx.historical_texts && ctx.historical_texts.length) {
+    const a = tokenize(text);
+    dims.direction = Math.min(100, Math.max(...ctx.historical_texts.map((h) => {
+      const b = tokenize(h);
+      let inter = 0;
+      for (const t of b) if (a.has(t)) inter++;
+      return inter * 12;
+    })));
+  } else {
+    dims.direction = null; // 冷启动：无画像无历史，方向维缺失而非 0
+  }
 
   // 活跃度 20%：状态 + 优先级/pipeline + 新鲜度
   // 盘点源（Bitable）有结构化 priority（0007 起）；fixture 行用 pipeline 有无近似。
