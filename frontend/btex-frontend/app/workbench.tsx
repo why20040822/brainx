@@ -429,13 +429,14 @@ function DecisionCard({job,completed,engagement,open,onAction,onFeedback,inTray,
  const actionComplete=completed.includes(`${job.id}:${action.id}`);
  return <article className={`pick-card${inTray?" in-tray":""}`} onClick={()=>open(job)}>
   <button className="pick-add" onClick={e=>{e.stopPropagation();onToggleTray(job.id)}} aria-label={inTray?"移出精选盘":"加入精选盘"} title={inTray?"移出精选盘":"加入精选盘"}>{inTray?<Check/>:<Plus/>}</button>
+  <button className="pick-card-feedback" onClick={e=>{e.stopPropagation();onFeedback(job)}} aria-label="不感兴趣" title="不感兴趣">×</button>
   <div className="pick-card-rank">No.{String(job.rank).padStart(2,"0")}</div>
   <div className="pick-card-title"><b>{job.company}</b><span>{job.role}</span></div>
   <div className="pick-card-tags"><em>{decisionGroupMeta[job.group].title}</em><em>{job.facts["职位关系"]}</em><em>{job.sourceMode==="COCKPIT_CONTEXT"?"驾驶舱上下文":"职位市场"}</em><em>{stateLabel[engagement]}</em></div>
   <p className="pick-card-reco">{job.recommendation}</p>
   <div className="pick-card-scores"><DecisionMetric label="推进" value={job.globalScore}/><DecisionMetric label="探索" value={job.explorationScore}/><DecisionMetric label="个人" value={job.personalScore}/><DecisionMetric label="最终" value={job.finalScore} emphasis="final"/></div>
   {folderMode&&<div className="pick-card-folder" onClick={e=>e.stopPropagation()}><FolderPlus/><select className="field" value="" onChange={e=>{if(e.target.value)onAssignFolder(job.id,e.target.value)}} aria-label={`将 ${job.company} 放入文件夹`}><option value="">放入文件夹…</option>{folders.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></div>}
-  <div className="pick-card-foot"><small>{job.recentSignal}</small><span className="pick-card-actions"><button className="pick-card-feedback" onClick={e=>{e.stopPropagation();onFeedback(job)}}>不感兴趣</button><button className={`pick-card-action${actionComplete?" complete":""}`} onClick={e=>{e.stopPropagation();onAction(job,action)}} disabled={actionComplete}>{actionComplete?"已记录":action.label}<ChevronRight/></button></span></div>
+  <div className="pick-card-foot"><small>{job.recentSignal}</small><span className="pick-card-actions"><button className={`pick-card-action${actionComplete?" complete":""}`} onClick={e=>{e.stopPropagation();onAction(job,action)}} disabled={actionComplete}>{actionComplete?"已记录":action.label}<ChevronRight/></button></span></div>
  </article>
 }
 
