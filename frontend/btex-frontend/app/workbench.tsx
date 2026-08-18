@@ -5,7 +5,7 @@ import {
   Activity, AlertTriangle, ArrowLeft, BarChart3, Bell, BriefcaseBusiness,
   Check, ChevronDown, ChevronRight, CircleHelp, Clock3, Database, Filter, FolderOpen, FolderPlus, GitCompareArrows,
   Infinity, ListFilter, MoreHorizontal, Plus, RotateCcw, Search, Settings2,
-  BellRing, CheckCircle2, CircleUserRound, ClipboardCheck, Send, ShieldCheck, SlidersHorizontal, Sparkles, Users, X, Zap,
+  BellRing, CheckCircle2, CircleUserRound, ClipboardCheck, Send, ShieldCheck, SlidersHorizontal, Sparkles, Star, Users, X, Zap,
 } from "lucide-react";
 import { actionLabel, seedAuth, seedNotifications, seedSync, stateLabel, type AuthStatus, type DecisionEvent, type EngagementCommand, type EngagementState, type Notification, type Outcome, type SyncStatus } from "./decision-demo";
 import { BACKEND_WEIGHTS, FALLBACK_DISMISS_REASONS, brainxFetch, connectSSE, fetchJobDetail, getSnapshot, makeIdempotencyKey, mapReplayData, mapRadarRow, mapClientRow, getRadar, getClients, updateOpportunityFacts, sendRecommendationFeedback, streamAssistant, BrainxApiError, type AssistantMessage, type BackendConsultants, type BackendEngagementResponse, type BackendOutcomeResponse, type BackendProfileUpdate, type BackendRecommendationRun, type BackendReplay, type BackendSessionStatus, type BrainxReplay, type BrainxSnapshot, type ManualFactField, type RadarJob, type RadarClient } from "./brainx-api";
@@ -428,7 +428,7 @@ function DecisionCard({job,completed,engagement,open,onAction,onFeedback,inTray,
  const action=job.actions.find(item=>!completed.includes(`${job.id}:${item.id}`))||job.actions[0];
  const actionComplete=completed.includes(`${job.id}:${action.id}`);
  return <article className={`pick-card${inTray?" in-tray":""}`} onClick={()=>open(job)}>
-  <button className="pick-add" onClick={e=>{e.stopPropagation();onToggleTray(job.id)}} aria-label={inTray?"移出精选盘":"加入精选盘"} title={inTray?"移出精选盘":"加入精选盘"}>{inTray?<Check/>:<Plus/>}</button>
+  <button className="pick-add" onClick={e=>{e.stopPropagation();onToggleTray(job.id)}} aria-label={inTray?"移出精选盘":"收藏到精选盘"} title={inTray?"移出精选盘":"收藏到精选盘"}>{inTray?<Check/>:<Star/>}</button>
   <button className="pick-card-feedback" onClick={e=>{e.stopPropagation();onFeedback(job)}} aria-label="不感兴趣" title="不感兴趣">×</button>
   <div className="pick-card-rank">No.{String(job.rank).padStart(2,"0")}</div>
   <div className="pick-card-title"><b>{job.company}</b><span>{job.role}</span></div>
