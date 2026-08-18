@@ -463,7 +463,10 @@ export function createServer(db = openDb(), deps = {}) {
     }
     if (handler) {
       const open = ['GET /api/v1/consultants', 'POST /api/v1/session', 'DELETE /api/v1/session',
-                    'GET /api/v1/oauth/status', 'GET /api/v1/oauth/authorize', 'GET /api/v1/oauth/callback'];
+                    'GET /api/v1/oauth/status', 'GET /api/v1/oauth/authorize', 'GET /api/v1/oauth/callback',
+                    // 人才库健康探测：纯状态（后端类型/连通性/建表），不含任何用户数据或密码，
+                    // 允许未登录访问，以便数据源页无论登录与否都能显示真库连接状态。
+                    'GET /api/v1/talent/health', 'GET /api/v1/talent/status'];
       const cid = open.includes(`${req.method} ${path}`) ? null : auth(req, res);
       if (open.includes(`${req.method} ${path}`) || cid) {
         try { return await handler(req, res, cid, u.searchParams, dynId); }
