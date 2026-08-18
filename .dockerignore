@@ -1,0 +1,14 @@
+# 构建镜像时排除的内容，避免把巨大/敏感文件塞进 build context
+node_modules
+**/node_modules
+.git
+.env
+.env.*
+!.env.example
+*.log
+frontend/**/dist
+frontend/**/.wrangler
+frontend/**/.next
+data/*.db
+data/*.sqlite
+*.pdf
