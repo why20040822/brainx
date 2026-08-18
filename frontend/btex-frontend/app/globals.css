@@ -401,8 +401,8 @@ html,body,.btex-app{background:var(--bg)}
    ═══════════════════════════════════════════════════════════════════ */
 :root{
   --bg:#f5faf8;--ink:#1c2b26;--muted:#71807a;--line:rgba(28,43,38,.08);
-  --blue:#2f6b60;--green:#2f6b60;--cyan:#2f6b60;--amber:#b98a2e;--orange:#c56a24;--red:#b4534a;
-  --panel:#ffffff;--soft:rgba(47,107,96,.10);color-scheme:light;
+  --blue:#2FD3A7;--green:#2FD3A7;--cyan:#2FD3A7;--amber:#b98a2e;--orange:#c56a24;--red:#b4534a;
+  --panel:#ffffff;--soft:rgba(47,211,167,.10);color-scheme:light;
   --mint:#dcefe8;--mint-soft:#eef7f3;--mint-ink:#1f5b50;--sage:#edf2f1;
   --font-display:"PingFang SC","PingFang TC","Noto Sans CJK SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
   --shadow-card:0 24px 60px rgba(23,43,36,.06);
@@ -560,7 +560,7 @@ html,body,.btex-app{background:var(--bg)}
 
 /* ── 呼吸感收尾：区域标题留白 + 更浅的分隔线 ── */
 .decision-zone{border-top:1px solid rgba(28,43,38,.08)}
-.decision-zone .decision-group-head{min-height:70px;padding:6px 2px 24px}
+.decision-zone .decision-group-head{min-height:70px;padding:18px 16px 24px}
 .decision-zone .decision-group-head h2{font-size:22px}
 .folder-strip-head{margin-bottom:12px}
 .folder-strip-head b{font-size:16px}
