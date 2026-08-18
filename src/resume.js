@@ -36,7 +36,9 @@ function extractName(text) {
 }
 
 function extractPhone(text) {
-  const m = text.match(RE_PHONE);
+  // 先把邮箱整体挖掉，避免邮箱里的长数字串被误当手机号。
+  const cleaned = text.replace(new RegExp(RE_EMAIL.source, 'g'), ' ');
+  const m = cleaned.match(RE_PHONE);
   if (!m) return null;
   if (m[1]) return m[1];
   if (m[2] && m[3] && m[4]) return `${m[2]}${m[3]}${m[4]}`;
