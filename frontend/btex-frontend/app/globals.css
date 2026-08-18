@@ -459,7 +459,7 @@ html,body,.btex-app{background:var(--bg)}
 .btn{background:#fff}
 .btn:hover{border-color:var(--green);background:var(--mint-soft)}
 .btn.primary{background:var(--green);border-color:var(--green)}
-.btn.primary:hover{background:var(--mint-ink)}
+.btn.primary:hover{background:var(--green);border-color:var(--green);color:#123d34;box-shadow:0 6px 16px rgba(47,211,167,.24)}
 
 /* ── 精选盘（寿司郎托盘）── */
 .pick-tray{position:relative;margin:0 0 38px;padding:18px 22px 16px;border:1px solid rgba(28,43,38,.10);border-radius:20px;background:#fff;box-shadow:var(--surface-shadow);}
