@@ -404,7 +404,7 @@ html,body,.btex-app{background:var(--bg)}
   --blue:#2f6b60;--green:#2f6b60;--cyan:#2f6b60;--amber:#b98a2e;--orange:#c56a24;--red:#b4534a;
   --panel:#ffffff;--soft:rgba(47,107,96,.10);color-scheme:light;
   --mint:#dcefe8;--mint-soft:#eef7f3;--mint-ink:#1f5b50;--sage:#edf2f1;
-  --font-display:"Songti SC","STSong","Noto Serif SC",serif;
+  --font-display:"PingFang SC","PingFang TC","Noto Sans CJK SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
   --shadow-card:0 24px 60px rgba(23,43,36,.06);
 }
 
