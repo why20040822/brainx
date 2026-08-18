@@ -623,7 +623,6 @@ export async function brainxFetch<T = unknown>(
   return data as T;
 }
 
-<<<<<<< HEAD
 // —— 人才供给（旁路，只读展示；后端 GET /opportunities/:id/talent-supply）——
 export type TalentSupplySnapshot = {
   jobId: string;
@@ -640,7 +639,8 @@ export type TalentSupplySnapshot = {
 /** 拉取某职位的真实人才供给（真库匹配结果）。未开启开关时返回 enabled:false。 */
 export async function getTalentSupply(jobId: string): Promise<TalentSupplySnapshot> {
   return brainxFetch<TalentSupplySnapshot>(`/api/v1/opportunities/${encodeURIComponent(jobId)}/talent-supply`);
-=======
+}
+
 /** 只读助手的流式接口；响应内容不经过 JSON 客户端封装，避免吞掉 SSE 增量。 */
 export async function streamAssistant(
   options: AssistantChatOptions,
@@ -677,7 +677,6 @@ export async function streamAssistant(
       if (done) break;
     }
   } finally { reader.releaseLock(); }
->>>>>>> f303ed930b19dd751dddea603d9e3a6e3ab1c322
 }
 
 /** 读取完整工作台快照：概览 + 推荐 + 逐职位详情（承接态/允许动作/事件/结果）+ 画像。
