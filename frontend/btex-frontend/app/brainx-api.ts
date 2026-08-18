@@ -600,6 +600,24 @@ export async function brainxFetch<T = unknown>(
   return data as T;
 }
 
+// —— 人才供给（旁路，只读展示；后端 GET /opportunities/:id/talent-supply）——
+export type TalentSupplySnapshot = {
+  jobId: string;
+  enabled: boolean;
+  algo?: string;
+  matchableTalentCount?: number;
+  supplyDifficulty?: "low" | "medium" | "high";
+  matchingSuggestion?: string;
+  reactivatableTalentCount?: number;
+  topMatches?: { talentId: number; name: string; score: number; matched?: string[] }[];
+  source?: string;
+};
+
+/** 拉取某职位的真实人才供给（真库匹配结果）。未开启开关时返回 enabled:false。 */
+export async function getTalentSupply(jobId: string): Promise<TalentSupplySnapshot> {
+  return brainxFetch<TalentSupplySnapshot>(`/api/v1/opportunities/${encodeURIComponent(jobId)}/talent-supply`);
+}
+
 /** 读取完整工作台快照：概览 + 推荐 + 逐职位详情（承接态/允许动作/事件/结果）+ 画像。
  *  会话未登录（401）时抛错，由调用方进入离线回退。 */
 export async function getSnapshot(): Promise<BrainxSnapshot> {
