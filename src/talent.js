@@ -306,6 +306,22 @@ function makeMysqlBackend(db) {
         return { ...t[0], tags };
       });
     },
+    async listTalentsWithTags({ limit = 200 } = {}) {
+      return withMysql(async (conn) => {
+        const [rows] = await conn.execute(
+          `SELECT * FROM talent ORDER BY id DESC LIMIT ?`, [limit]);
+        if (!rows.length) return [];
+        const ids = rows.map((r) => r.id);
+        const [tagRows] = await conn.query(
+          `SELECT tt.talent_id, g.name, g.category FROM talent_tag tt JOIN tag g ON g.id=tt.tag_id WHERE tt.talent_id IN (?)`, [ids]);
+        const byTalent = new Map();
+        for (const tr of tagRows) {
+          if (!byTalent.has(tr.talent_id)) byTalent.set(tr.talent_id, []);
+          byTalent.get(tr.talent_id).push({ name: tr.name, category: tr.category });
+        }
+        return rows.map((r) => ({ ...r, tags: byTalent.get(r.id) || [] }));
+      });
+    },
     async upsertPosition({ title, description, requirements }) {
       return withMysql(async (conn) => {
         const [hit] = await conn.execute(`SELECT id FROM \`position\` WHERE title=? LIMIT 1`, [title]);
