@@ -30,3 +30,11 @@ if (h.backend === 'mysql' && h.schema === 'ready') {
   console.log('  在 .env 填 BRAINX_MYSQL_USER / BRAINX_MYSQL_PASSWORD / BRAINX_MYSQL_DATABASE 后重跑本脚本。');
   process.exitCode = 0;
 }
+
+// 显式收尾：MySQL 连接池的 keepAlive 定时器会让事件循环不空、进程挂起。
+// 关掉连接池后主动退出，避免 `npm run talent:health` 每次都要等到超时才结束。
+try {
+  const db = await import('../src/db.js');
+  if (typeof db.closeMysql === 'function') await db.closeMysql();
+} catch { /* 内存回退时无 db 连接池，忽略 */ }
+process.exit(process.exitCode ?? 0);
