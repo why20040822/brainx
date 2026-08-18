@@ -19,6 +19,9 @@ export const WEIGHTS = {
 
 export const POLICY_VERSION = 'baseline-1.0';
 
+/** 承接容量默认上限（顾问同时关注+接单的软上限）。可被 ctx.capacity_limit 覆盖。 */
+export const CAPACITY_LIMIT = 10;
+
 /** 硬约束（PRD §6）：命中即不得生成正式推荐。返回原因或 null。 */
 export function hardBlock(job, relation, syncComplete) {
   if (!syncComplete) return '本轮同步不完整';
