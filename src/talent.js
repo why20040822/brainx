@@ -314,8 +314,9 @@ function makeMysqlBackend(db) {
     },
     async listTalentsWithTags({ limit = 200 } = {}) {
       return withMysql(async (conn) => {
-        const [rows] = await conn.execute(
-          `SELECT * FROM talent ORDER BY id DESC LIMIT ?`, [limit]);
+        const lim = Math.max(1, Math.min(500, Number(limit) || 200)); // 已清洗为整数，内联安全
+        const [rows] = await conn.query(
+          `SELECT * FROM talent ORDER BY id DESC LIMIT ${lim}`);
         if (!rows.length) return [];
         const ids = rows.map((r) => r.id);
         const [tagRows] = await conn.query(
