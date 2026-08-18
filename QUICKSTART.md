@@ -26,6 +26,15 @@ node src/server.js          # 默认 http://127.0.0.1:3000
 sh bin/install-launchd.sh   # → http://127.0.0.1:3100
 ```
 
+当前仓库若包含 `frontend/btex-frontend`，Brain X 会在启动时自动拉起已构建的 B-tex React/Vinext 前端（内部默认端口 4321），并继续通过 Brain X 的单一地址提供页面：
+
+```text
+http://127.0.0.1:3100       页面、登录入口、前端资源与 API
+```
+
+`/api/*` 仍由 Brain X 后端直接处理；页面请求代理到内部前端服务。设置
+`BRAINX_FRONTEND_OFF=1` 可回退到原有 `public/` 静态前端。
+
 浏览器打开 → 飞书授权登录（mia/felix/york 在册）。
 
 ## 2. 唯一需要补的一件东西：.env

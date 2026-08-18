@@ -13,6 +13,7 @@ import { latestCompleteSnapshot, latestSync } from './sync.js';
 import { WEIGHTS, POLICY_VERSION, hardBlock, scoreJob, actionOf, bandOf, sortRecs, explain } from './scorer.js';
 import { listConsultants } from './roster.js';
 import { relationMap, deriveRelation } from './relations.js';
+import { effectiveJobs } from './facts.js';
 
 /** 花名册从 DB 读（0003 起 consultants 表为权威，fixtures 只是种子）。 */
 export function loadConsultants(db) {
@@ -55,7 +56,8 @@ export function recommend(db, consultant_id, { top = 10, dry_run = false } = {})
              sync: last, snapshot_id: snapshot.sync_id, items: [], run_id: null };
   }
 
-  const jobs = db.prepare(`SELECT * FROM job_facts`).all();
+  // 人工覆盖只作用于当前顾问；同步源 job_facts 保持不变。
+  const jobs = effectiveJobs(db, consultant_id);
   const relCtx = relationMap(db, consultant_id);
   const ctx = buildCtx(db, consultant_id, snapshot);
 
@@ -125,6 +127,11 @@ export const publicRec = (r) => ({
     city: r.job.city, pipeline: r.job.pipeline, hc: r.job.hc,
     active_state: r.job.active_state, priority: r.job.priority ?? null,
     notes: r.job.notes ?? null, company_type: r.job.company_type ?? null,
+    current_stage: r.job.current_stage ?? null,
+    pipeline_snapshot: r.job.pipeline_snapshot ?? null,
+    next_action: r.job.next_action ?? null,
+    fact_sources: r.job.fact_sources ?? {},
+    fact_updated_at: r.job.fact_updated_at ?? {},
     relation: r.relation, source_url: r.job.source_url,
     captured_at: r.job.captured_at,
   },
@@ -136,7 +143,7 @@ export function latestRun(db, consultant_id) {
     ORDER BY created_at DESC LIMIT 1`).get(consultant_id);
   if (!run) return null;
   const recs = db.prepare(`SELECT * FROM recommendations WHERE run_id=? ORDER BY rank`).all(run.run_id);
-  const jobs = db.prepare(`SELECT * FROM job_facts`).all();
+  const jobs = effectiveJobs(db, consultant_id);
   const jobMap = Object.fromEntries(jobs.map((j) => [j.project_id, j]));
   const relCtx = relationMap(db, consultant_id);
   return {

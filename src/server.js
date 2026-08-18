@@ -3,6 +3,7 @@
  */
 import './env.js';
 import http from 'node:http';
+import { spawn } from 'node:child_process';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,14 +26,21 @@ import { validateJwt, saveTtcToken, ttcAuthStatus } from './ttcsdk/auth.js';
 import { quota as ttcQuota } from './ttcsdk/user.js';
 import { TtcApiError } from './ttcsdk/http.js';
 import { radarRows, clientRows } from './radar.js';
+<<<<<<< HEAD
 import { syncTalentsFromCsv, listTalents as listTalentsRepo, getTalent, talentBackendStatus, ingestResume, syncTalentsFromResumes, listResumes, talentHealth } from './talent.js';
 import { talentSupplyForJob, talentSupplyEnabled } from './talent-supply.js';
+=======
+import { effectiveJob, effectiveFactPayload, updateFactOverrides } from './facts.js';
+>>>>>>> github/main
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
                '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
                '.svg': 'image/svg+xml', '.png': 'image/png' };
+const FRONTEND_DIR = join(ROOT, 'frontend', 'btex-frontend');
+const FRONTEND_HOST = process.env.BRAINX_FRONTEND_HOST || '127.0.0.1';
+const FRONTEND_PORT = Number(process.env.BRAINX_FRONTEND_PORT || 4321);
 
 /** 目录穿越判定：必须带分隔符前缀——裸 startsWith(base) 会把兄弟目录
  * （public-x/… 前缀同为 /…/public）误判为内部（2026-08-10 框架修正）。 */
@@ -43,6 +51,27 @@ const json = (res, code, obj) => {
   res.end(JSON.stringify(obj));
 };
 const err = (res, code, codeStr, message) => json(res, code, { error: { code: codeStr, message } });
+
+const proxyFrontend = (req, res, target) => {
+  const targetPath = req.url === '/login' || req.url?.startsWith('/login?')
+    ? `/${req.url.slice('/login'.length)}`
+    : req.url || '/';
+  const proxy = http.request({
+    hostname: target.host,
+    port: target.port,
+    path: targetPath,
+    method: req.method,
+    headers: { ...req.headers, host: `${target.host}:${target.port}` },
+  }, (upstream) => {
+    res.writeHead(upstream.statusCode || 502, upstream.headers);
+    upstream.pipe(res);
+  });
+  proxy.on('error', (e) => {
+    if (!res.headersSent) err(res, 502, 'FRONTEND_UNAVAILABLE', `前端服务不可用：${e.message}`);
+    else res.destroy(e);
+  });
+  req.pipe(proxy);
+};
 
 async function body(req) {
   let s = '';
@@ -252,18 +281,25 @@ export function createServer(db = openDb(), deps = {}) {
       const job = db.prepare('SELECT * FROM job_facts WHERE project_id=?').get(id);
       // fail-closed：与自己无任何关系的职位一律 404（不泄露存在性），事实明细不出库
       if (!job || !jobVisibleTo(db, cid, id)) return err(res, 404, 'NOT_FOUND', '职位不存在');
+      const effective = effectiveJob(db, cid, id);
       const relRow = db.prepare(`SELECT relation, source, valid_from FROM job_memberships
         WHERE project_id=? AND consultant_id=? AND valid_to IS NULL`).get(id, cid);
       const rel = relationOf(db, cid, id); // 推导关系单一权威（relations.js）
       const eng = currentState(db, cid, id);
-      const events = db.prepare(`SELECT event_type, occurred_at, actor, reason FROM decision_events
-        WHERE project_id=? AND actor=? ORDER BY occurred_at, id`).all(id, cid);
+      const events = [
+        ...db.prepare(`SELECT event_type, occurred_at, actor, reason FROM decision_events
+          WHERE project_id=? AND actor=? ORDER BY occurred_at, id`).all(id, cid),
+        ...db.prepare(`SELECT 'FACT_UPDATED' AS event_type, occurred_at, consultant_id AS actor,
+          '人工修正项目事实并重新判断' AS reason FROM fact_override_events
+          WHERE project_id=? AND consultant_id=? ORDER BY occurred_at, id`).all(id, cid),
+      ].sort((a, b) => String(a.occurred_at).localeCompare(String(b.occurred_at)));
       const rec = db.prepare(`SELECT * FROM recommendations WHERE project_id=? AND consultant_id=?
         ORDER BY created_at DESC LIMIT 1`).get(id, cid);
       const outs = db.prepare(`SELECT stage, value_json, observed_at FROM job_outcomes
         WHERE project_id=? AND consultant_id=? ORDER BY observed_at`).all(id, cid);
       json(res, 200, {
-        job: { ...job, raw_json: undefined, relation: rel },
+        job: { ...effective, raw_json: undefined, relation: rel },
+        fact_updates: effectiveFactPayload(db, cid, id),
         relation: { relation: rel, source: relRow?.source || null, valid_from: relRow?.valid_from || null },
         engagement_state: eng.state, legal_actions: legalActions(db, cid, id),
         events, outcomes: outs.map((o) => ({ ...o, value: JSON.parse(o.value_json) })),
@@ -274,6 +310,32 @@ export function createServer(db = openDb(), deps = {}) {
           evidence_refs: JSON.parse(rec.evidence_refs_json),
           breakdown: JSON.parse(rec.breakdown_json), policy_version: rec.policy_version } : null,
       });
+    },
+
+    'PATCH /api/v1/opportunities/:id/facts': async (req, res, cid, q, id) => {
+      const job = db.prepare('SELECT 1 FROM job_facts WHERE project_id=?').get(id);
+      if (!job || !jobVisibleTo(db, cid, id)) return err(res, 404, 'NOT_FOUND', '职位不存在');
+      const b = await body(req);
+      if (!b) return err(res, 400, 'BAD_JSON', '请求体不是合法 JSON');
+      try {
+        const out = updateFactOverrides(db, cid, id, b);
+        if (!out.ok) return err(res, out.status || 422, 'FACT_UPDATE_REJECTED', out.error);
+        // 覆盖写入后生成新冻结推荐；旧 run / replay 行永不更新。
+        const rec = out.already ? null : recommend(db, cid, { top: 10 });
+        const latest = latestRun(db, cid);
+        const item = latest?.items.find((r) => r.job?.project_id === id) || null;
+        json(res, rec?.blocked ? 409 : 200, {
+          ok: true, already: !!out.already, event_id: out.event_id,
+          effective: effectiveJob(db, cid, id), fact_updates: effectiveFactPayload(db, cid, id),
+          recommendation: item ? {
+            decision_id: item.decision_id, run_id: latest.run.run_id, action: item.action,
+            score: item.score, breakdown: item.breakdown, reasons: item.reasons,
+            risks: item.risks, evidence_coverage: item.evidence_coverage,
+          } : null,
+          decision_run_id: latest?.run?.run_id || rec?.run_id || null,
+          recompute: rec?.blocked ? { blocked: true, reason: rec.reason } : { blocked: false },
+        });
+      } catch (e) { err(res, 500, 'FACT_UPDATE_FAILED', String(e.message).slice(0, 300)); }
     },
 
     'POST /api/v1/opportunities/:id/engagement': async (req, res, cid, q, id) => {
@@ -412,6 +474,9 @@ export function createServer(db = openDb(), deps = {}) {
       }
       return;
     }
+    if (deps.frontendTarget && !path.startsWith('/api/')) {
+      return proxyFrontend(req, res, deps.frontendTarget);
+    }
     // 静态文件（public/），/ → index.html，/login → login.html
     if (req.method === 'GET') {
       if (path === '/') path = '/index.html';
@@ -428,6 +493,7 @@ export function createServer(db = openDb(), deps = {}) {
     err(res, 404, 'NOT_FOUND', `${req.method} ${path}`);
   });
   server.bus = bus; // 主块/测试用来广播桥接事件
+  server.frontendTarget = deps.frontendTarget || null;
   return server;
 }
 
@@ -436,7 +502,31 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // 只绑回环：工作台含未脱敏业务数据，不应对局域网暴露（BRAINX_HOST 显式覆盖除外）
   const host = process.env.BRAINX_HOST || '127.0.0.1';
   const db = openDb();
-  const server = createServer(db);
+  const frontendTarget = process.env.BRAINX_FRONTEND_OFF === '1'
+    ? null
+    : { host: FRONTEND_HOST, port: FRONTEND_PORT };
+  const server = createServer(db, { frontendTarget });
+  let frontendProcess = null;
+  if (frontendTarget && existsSync(join(FRONTEND_DIR, 'package.json'))) {
+    frontendProcess = spawn('npm', ['run', 'start', '--', '--host', FRONTEND_HOST, '--port', String(FRONTEND_PORT)], {
+      cwd: FRONTEND_DIR,
+      env: { ...process.env, PORT: String(FRONTEND_PORT), HOSTNAME: FRONTEND_HOST },
+      stdio: 'inherit',
+    });
+    frontendProcess.on('error', (e) => console.error(`[frontend] 启动失败：${e.message}`));
+    frontendProcess.on('exit', (code, signal) => {
+      if (code !== 0 && signal !== 'SIGTERM') console.error(`[frontend] 已退出 code=${code} signal=${signal || '-'}`);
+    });
+    console.log(`前端服务: http://${FRONTEND_HOST}:${FRONTEND_PORT}（由 Brain X 代理）`);
+  } else if (frontendTarget) {
+    console.warn(`[frontend] 未找到 ${FRONTEND_DIR}，回退到 public/`);
+  }
+  const shutdown = () => {
+    if (frontendProcess && !frontendProcess.killed) frontendProcess.kill('SIGTERM');
+    server.close(() => process.exit(0));
+  };
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
   server.listen(port, host, () => console.log(`Brain X 工作台: http://${host}:${port}`));
   // 桥接常驻：BRAINX_BRIDGE_INTERVAL_MS（默认 180s）；BRAINX_BRIDGE_OFF=1 关闭
   if (process.env.BRAINX_BRIDGE_OFF !== '1') {
