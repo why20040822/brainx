@@ -18,6 +18,10 @@ export const WEIGHTS = {
 };
 
 export const POLICY_VERSION = 'baseline-1.0';
+export const DIM_LABELS = {
+  direction: '职位方向匹配', activity: '项目活跃度与 Pipeline', similarity: '与历史项目相似度',
+  capacity: '当前承接容量', outcomes: '历史行为与交付结果', exploration: '探索额度',
+};
 
 /** 硬约束（PRD §6）：命中即不得生成正式推荐。返回原因或 null。 */
 export function hardBlock(job, relation, syncComplete) {
@@ -82,6 +86,8 @@ export function scoreJob(job, relation, ctx) {
 
   // 方向匹配 25%：画像关键词 + 历史项目关键词
   dims.direction = kwOverlap(text, ctx.profile_keywords);
+  // 顾问级“不感兴趣”只影响未来排序，不修改冻结快照或职位事实。
+  if (ctx.feedback_projects?.includes(job.project_id)) dims.direction = Math.max(0, dims.direction - 20);
 
   // 活跃度 20%：状态 + 优先级/pipeline + 新鲜度
   // 盘点源（Bitable）有结构化 priority（0007 起）；fixture 行用 pipeline 有无近似。
@@ -132,7 +138,9 @@ export function scoreJob(job, relation, ctx) {
   return {
     score: Math.round(score * 10) / 10,
     coverage: Math.round(coverage * 100) / 100,
-    breakdown: Object.entries(WEIGHTS).map(([k, w]) => ({ dim: k, weight: w, score: dims[k] })),
+    breakdown: Object.entries(WEIGHTS).map(([k, w]) => ({ dim: k, label: DIM_LABELS[k], weight: w,
+      score: dims[k], weighted_score: dims[k] == null ? null : Math.round(dims[k] * w * 100) / 100,
+      status: dims[k] == null ? 'missing' : 'available' })),
   };
 }
 

@@ -28,6 +28,7 @@ import { TtcApiError } from './ttcsdk/http.js';
 import { radarRows, clientRows } from './radar.js';
 import { effectiveJob, effectiveFactPayload, updateFactOverrides } from './facts.js';
 import { chatStream, isLlmConfigured } from './llm.js';
+import { pickTray, nextBatch, feedback as recommendationFeedback } from './recommendation-batch.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
@@ -228,8 +229,21 @@ export function createServer(db = openDb(), deps = {}) {
                        items: run.items.slice(0, limit) });
     },
 
+    'GET /api/v1/recommendations/pick-tray': (req, res, cid, q) => {
+      const out = pickTray(db, cid, { limit: q.get('limit'), cursor: q.get('cursor') });
+      json(res, 200, out);
+    },
+    'POST /api/v1/recommendations/feedback': async (req, res, cid) => {
+      const out = recommendationFeedback(db, cid, await body(req));
+      json(res, out.ok ? 200 : out.status || 422, out);
+    },
+    'POST /api/v1/recommendations/next-batch': async (req, res, cid) => {
+      const out = nextBatch(db, cid, await body(req));
+      json(res, out.ok ? 200 : out.status || 409, out);
+    },
+
     'POST /api/v1/recommendations/run': (req, res, cid) => {
-      const out = recommend(db, cid, { top: 10 });
+      const out = recommend(db, cid, { top: 20 });
       json(res, out.blocked ? 409 : 200, out);
     },
 
@@ -291,7 +305,7 @@ export function createServer(db = openDb(), deps = {}) {
         const out = updateFactOverrides(db, cid, id, b);
         if (!out.ok) return err(res, out.status || 422, 'FACT_UPDATE_REJECTED', out.error);
         // 覆盖写入后生成新冻结推荐；旧 run / replay 行永不更新。
-        const rec = out.already ? null : recommend(db, cid, { top: 10 });
+        const rec = out.already ? null : recommend(db, cid, { top: 20 });
         const latest = latestRun(db, cid);
         const item = latest?.items.find((r) => r.job?.project_id === id) || null;
         json(res, rec?.blocked ? 409 : 200, {
@@ -501,7 +515,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // 桥接常驻：BRAINX_BRIDGE_INTERVAL_MS（默认 180s）；BRAINX_BRIDGE_OFF=1 关闭
   if (process.env.BRAINX_BRIDGE_OFF !== '1') {
     startBridge(db, server.bus, {
-      recommendFn: (cid) => recommend(db, cid, { top: 10 }),
+      recommendFn: (cid) => recommend(db, cid, { top: 20 }),
       consultantIdsFn: () => loadConsultants(db).map((c) => c.consultant_id),
       onRecommended: makeAutoPush(db), // 重大变化自动推卡；BRAINX_PUSH_AUTO=1 才真发
     });

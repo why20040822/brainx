@@ -43,6 +43,7 @@ export type BrainxJob = {
   recommendation: string; recentSignal: string;
   facts: Record<string, string>; scoreNotes: string[];
   factFields?: BrainxFactFields;
+  scoreBreakdown?: BackendBreakdown[];
   risks: string[]; evidence: string[]; actions: BrainxDecisionAction[];
   brainxLegal?: EngagementCommand[]; brainxDecisionId?: string;
 };
@@ -78,7 +79,7 @@ export type BrainxReplay = {
 export type BrainxErrorPayload = { error?: { code?: string; message?: string } } & Record<string, unknown>;
 
 type BackendEvidenceRef = { type?: string; ref?: string; excerpt?: string };
-type BackendBreakdown = { dim: string; weight: number; score: number | null };
+export type BackendBreakdown = { dim: string; label?: string; weight: number; score: number | null; weighted_score?: number | null; status?: "available" | "missing" };
 type BackendJob = {
   project_id: string; company?: string; role?: string; city?: string | null;
   pipeline?: string | null; hc?: number | null; active_state?: string | null;
@@ -141,6 +142,8 @@ export type BackendSseEvent = { type?: "hello" | "sync" | "recommend" | "sync_er
 export type BackendConsultants = { items: { consultant_id: string; display_name: string }[] };
 export type BackendEngagementResponse = { ok: boolean; already?: boolean; event_id?: string; state: EngagementState; legal_actions: EngagementCommand[] };
 export type BackendRecommendationRun = { blocked?: boolean; reason?: string; run_id?: string | null; items?: BackendRecommendation[] };
+export type BackendPickTray = { snapshot_id: string | null; batch_id: string | null; cursor?: string; next_cursor: string | null; has_more: boolean; items: BackendRecommendation[] };
+export type BackendFeedbackResponse = { ok: boolean; already?: boolean; feedback_id?: string; replacement?: BackendPickTray };
 export type BackendOutcomeResponse = { ok: boolean; already?: boolean; outcome_id?: string | number };
 export type BackendProfileUpdate = { ok: boolean; consultant_id: string; profile_keywords?: string[]; profile_note?: string };
 export type AssistantMessage = { role: "user" | "assistant"; content: string };
@@ -311,7 +314,7 @@ function factFieldsOf(job: {
 }
 
 function breakdownDim(
-  breakdown: { dim: string; weight: number; score: number | null }[] | undefined | null,
+  breakdown: BackendBreakdown[] | undefined | null,
   dim: string,
 ): number | string {
   const found = breakdown?.find((b) => b.dim === dim);
@@ -561,6 +564,23 @@ export async function getClients(): Promise<{ items: BackendClientRow[] }> {
   return brainxFetch<{ items: BackendClientRow[] }>("/api/v1/clients");
 }
 
+export async function getPickTray(cursor?: string): Promise<BackendPickTray> {
+  const query = cursor ? `?limit=20&cursor=${encodeURIComponent(cursor)}` : "?limit=20";
+  return brainxFetch<BackendPickTray>(`/api/v1/recommendations/pick-tray${query}`);
+}
+
+export async function nextRecommendationBatch(batchId: string, cursor: string, idempotencyKey: string): Promise<BackendPickTray> {
+  return brainxFetch<BackendPickTray>("/api/v1/recommendations/next-batch", {
+    method: "POST", body: { batch_id: batchId, cursor, size: 20, idempotency_key: idempotencyKey },
+  });
+}
+
+export async function sendRecommendationFeedback(projectId: string, reason: string, batchId: string | null, idempotencyKey: string): Promise<BackendFeedbackResponse> {
+  return brainxFetch<BackendFeedbackResponse>("/api/v1/recommendations/feedback", {
+    method: "POST", body: { project_id: projectId, feedback: "NOT_INTERESTED", reason, batch_id: batchId, idempotency_key: idempotencyKey },
+  });
+}
+
 export type ManualFactUpdate = {
   changes?: Partial<Record<ManualFactField, string | number>>;
   clear_fields?: ManualFactField[];
@@ -646,7 +666,7 @@ export async function streamAssistant(
 export async function getSnapshot(): Promise<BrainxSnapshot> {
   const [wb, recs, profile, dismiss] = await Promise.all([
     brainxFetch<BackendWorkbench>("/api/v1/workbench"),
-    brainxFetch<BackendRecommendations>("/api/v1/recommendations?limit=10"),
+    brainxFetch<BackendRecommendations>("/api/v1/recommendations?limit=20"),
     brainxFetch<BackendProfile>("/api/v1/profile"),
     brainxFetch<BackendDismissReasons>("/api/v1/dismiss-reasons").catch(() => ({ items: FALLBACK_DISMISS_REASONS })),
   ]);

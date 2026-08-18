@@ -1,5 +1,5 @@
 /** recommend.js — 生成一轮推荐并冻结（PRD §6/§8，补全文档 §13.4）。
- * 只读最近 complete=1 快照；冻结 recommendations；Top10 写 RECOMMENDED 事件。
+ * 只读最近 complete=1 快照；冻结 recommendations；精选盘使用冻结 Top20。
  *
  * 2026-08-10 框架修正：
  *   - 关系一律走 relations.js 推导（本人行 > 他人主做 → OTHER_CONSULTANT >
@@ -32,12 +32,14 @@ export function buildCtx(db, consultant_id, snapshot) {
     WHERE consultant_id=? AND state='ACCEPTED'`).get(consultant_id).n;
   const avg = db.prepare(`SELECT AVG(json_extract(value_json,'$.rating')) a FROM job_outcomes
     WHERE consultant_id=? AND json_extract(value_json,'$.rating') IS NOT NULL`).get(consultant_id).a;
+  const feedbackProjects = db.prepare(`SELECT project_id FROM recommendation_feedback
+    WHERE consultant_id=?`).all(consultant_id).map((row) => row.project_id);
   return {
     consultant_id,
     profile_keywords: c.profile_keywords || [],
     historical_texts: hist.map((h) => h.text),
     watched_count: watched, accepted_count: accepted,
-    outcomes_avg: avg, now: now(), snapshot_id: snapshot?.sync_id || '',
+    outcomes_avg: avg, feedback_projects: feedbackProjects, now: now(), snapshot_id: snapshot?.sync_id || '',
   };
 }
 
@@ -45,7 +47,7 @@ export function buildCtx(db, consultant_id, snapshot) {
  * 生成一轮推荐。硬约束：最近同步 complete=0 → blocked，不落推荐。
  * 返回 { run_id, blocked, items[] }；dry_run 不落库。
  */
-export function recommend(db, consultant_id, { top = 10, dry_run = false } = {}) {
+export function recommend(db, consultant_id, { top = 20, dry_run = false } = {}) {
   const last = latestSync(db, consultant_id);
   const snapshot = latestCompleteSnapshot(db, consultant_id);
   if (!snapshot) {
@@ -97,12 +99,13 @@ export function recommend(db, consultant_id, { top = 10, dry_run = false } = {})
     db.exec('BEGIN');
     try {
       insRun.run(run_id, consultant_id, snapshot.sync_id, POLICY_VERSION, evaluated.length, 'COMPLETED', now());
-      for (const r of evaluated.slice(0, top)) {
+      // 冻结整轮候选池；Top20 只是默认展示窗口，换一批必须复用同一轮分数。
+      for (const r of evaluated) {
         insRec.run(r.decision_id, run_id, r.project_id, consultant_id, r.action, r.score,
                    r.confidence_band, r.evidence_coverage, JSON.stringify(r.reasons),
                    JSON.stringify(r.risks), JSON.stringify(r.evidence_refs),
                    JSON.stringify(r.breakdown), POLICY_VERSION, r.rank, now());
-        insEvt.run(uuid(), 'RECOMMENDED', consultant_id, now(), r.project_id, r.decision_id,
+        if (r.rank <= top) insEvt.run(uuid(), 'RECOMMENDED', consultant_id, now(), r.project_id, r.decision_id,
                    POLICY_VERSION, `rec:${run_id}:${r.project_id}`, null, 'RECOMMENDED', '{}');
       }
       db.exec('COMMIT');
