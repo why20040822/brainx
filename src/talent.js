@@ -341,6 +341,14 @@ function makeMysqlBackend(db) {
 
 const safeJson = (s) => { try { return typeof s === 'string' ? JSON.parse(s) : s; } catch { return s; } };
 
+/** ISO8601 / Date / null → MySQL DATETIME 字符串 'YYYY-MM-DD HH:MM:SS'（UTC）。null 透传。 */
+function toMysqlDatetime(v) {
+  if (v == null) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 19).replace('T', ' ');
+}
+
 // ---------------------------------------------------------------------------
 // 内存后端（无 RDS 回退；读写语义与 MySQL 版对齐）
 // ---------------------------------------------------------------------------
