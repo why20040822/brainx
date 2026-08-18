@@ -661,7 +661,6 @@ html,body,.btex-app{background:var(--bg)}
 .btex-app .decision-zone .decision-row:hover{background:rgba(47,211,167,.05)}
 .btex-app .accepted-summary{border-color:rgba(47,211,167,.22);background:rgba(47,211,167,.07)}
 .btex-app .accepted-card-action,.btex-app .pick-card-action{color:var(--mint-ink)}
-<<<<<<< HEAD
 
 /* 候选供给卡片（人才侧适配层呈现）——迁移自 decision-workbench，配 btex 绿色调 */
 .supply-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -690,7 +689,6 @@ html,body,.btex-app{background:var(--bg)}
 .backend-facts dd{margin:0;font-size:12px;color:#2b3a48}
 .backend-facts dd.unknown{color:#a1323f}
 @media(max-width:720px){.backend-facts{grid-template-columns:1fr}}
-=======
 .rail-toggle{width:36px;height:30px;border:0;border-radius:8px;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;align-self:flex-start;margin:0 0 2px 6px}.rail-toggle:hover{background:var(--mint-soft);color:var(--mint-ink)}.rail-toggle svg{width:17px;height:17px}
 @media(min-width:721px){.btex-app.nav-open:not(.assistant-open){grid-template-columns:220px minmax(0,1fr)}.btex-app.nav-open.assistant-open{grid-template-columns:220px minmax(560px,1fr) var(--assistant-width)}.btex-app.nav-open .rail-nav{align-items:stretch;padding-left:14px;padding-right:14px}.btex-app.nav-open .rail-toggle{align-self:flex-end;margin-right:2px}.btex-app.nav-open .rail-blocks>button{width:100%;height:52px;flex-direction:row;justify-content:flex-start;gap:12px;padding:0 14px}.btex-app.nav-open .rail-ico{width:22px}.btex-app.nav-open .rail-label{font-size:13px}.btex-app.nav-open .rail-brand{align-self:center}}
 @media(min-width:721px) and (max-width:1240px){.btex-app.nav-open.assistant-open{grid-template-columns:88px minmax(560px,1fr) 360px}.btex-app.nav-open.assistant-open .rail-nav{align-items:center;padding-left:10px;padding-right:10px}.btex-app.nav-open.assistant-open .rail-toggle{align-self:flex-start;margin-left:6px}.btex-app.nav-open.assistant-open .rail-blocks>button{width:68px;height:64px;flex-direction:column;justify-content:center;gap:5px;padding:0}.btex-app.nav-open.assistant-open .rail-label{font-size:11px}}
@@ -704,4 +702,3 @@ html,body,.btex-app{background:var(--bg)}
 .btex-app .assistant-trigger,.btex-app .profile-trigger{color:#176B58;border-color:rgba(23,107,88,.3)}
 .btex-app .assistant-trigger:hover,.btex-app .assistant-trigger.active,.btex-app .profile-trigger:hover,.btex-app .profile-trigger.active{background:#176B58;border-color:#176B58;color:#fff}
 .btex-app .assistant-message.user p{background:#176B58;color:#fff}
->>>>>>> f303ed930b19dd751dddea603d9e3a6e3ab1c322

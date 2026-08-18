@@ -8,11 +8,7 @@ import {
   BellRing, CheckCircle2, CircleUserRound, ClipboardCheck, Send, ShieldCheck, SlidersHorizontal, Sparkles, Star, Users, X, Zap,
 } from "lucide-react";
 import { actionLabel, seedAuth, seedNotifications, seedSync, stateLabel, type AuthStatus, type DecisionEvent, type EngagementCommand, type EngagementState, type Notification, type Outcome, type SyncStatus } from "./decision-demo";
-<<<<<<< HEAD
-import { BACKEND_WEIGHTS, FALLBACK_DISMISS_REASONS, brainxFetch, connectSSE, fetchJobDetail, getSnapshot, makeIdempotencyKey, mapReplayData, mapRadarRow, mapClientRow, getRadar, getClients, getTalentSupply, updateOpportunityFacts, BrainxApiError, type TalentSupplySnapshot, type BackendConsultants, type BackendEngagementResponse, type BackendOutcomeResponse, type BackendProfileUpdate, type BackendRecommendationRun, type BackendReplay, type BackendSessionStatus, type BrainxReplay, type BrainxSnapshot, type ManualFactField, type RadarJob, type RadarClient } from "./brainx-api";
-=======
-import { BACKEND_WEIGHTS, FALLBACK_DISMISS_REASONS, brainxFetch, connectSSE, fetchJobDetail, getSnapshot, makeIdempotencyKey, mapReplayData, mapRadarRow, mapClientRow, getRadar, getClients, updateOpportunityFacts, sendRecommendationFeedback, streamAssistant, BrainxApiError, type AssistantMessage, type BackendConsultants, type BackendEngagementResponse, type BackendOutcomeResponse, type BackendProfileUpdate, type BackendRecommendationRun, type BackendReplay, type BackendSessionStatus, type BrainxReplay, type BrainxSnapshot, type ManualFactField, type RadarJob, type RadarClient } from "./brainx-api";
->>>>>>> f303ed930b19dd751dddea603d9e3a6e3ab1c322
+import { BACKEND_WEIGHTS, FALLBACK_DISMISS_REASONS, brainxFetch, connectSSE, fetchJobDetail, getSnapshot, makeIdempotencyKey, mapReplayData, mapRadarRow, mapClientRow, getRadar, getClients, getTalentSupply, updateOpportunityFacts, sendRecommendationFeedback, streamAssistant, BrainxApiError, type TalentSupplySnapshot, type AssistantMessage, type BackendConsultants, type BackendEngagementResponse, type BackendOutcomeResponse, type BackendProfileUpdate, type BackendRecommendationRun, type BackendReplay, type BackendSessionStatus, type BrainxReplay, type BrainxSnapshot, type ManualFactField, type RadarJob, type RadarClient } from "./brainx-api";
 import { cockpitRadarCompanies } from "./cockpit-radar-data";
 
 type Page = "today"|"jobs"|"clients"|"alerts"|"rules"|"sources"|"accepted";
