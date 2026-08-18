@@ -35,6 +35,8 @@ export function buildCtx(db, consultant_id, snapshot) {
   return {
     consultant_id,
     profile_keywords: c.profile_keywords || [],
+    // 承接容量上限：顾问档案 profile_json 里可配 capacity_limit；缺省时 scorer 用 CAPACITY_LIMIT。
+    capacity_limit: Number(c.capacity_limit) > 0 ? Number(c.capacity_limit) : undefined,
     historical_texts: hist.map((h) => h.text),
     watched_count: watched, accepted_count: accepted,
     outcomes_avg: avg, now: now(), snapshot_id: snapshot?.sync_id || '',
