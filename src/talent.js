@@ -201,6 +201,12 @@ export async function listTalents({ limit = 20, offset = 0, status = null } = {}
   return b.listTalents({ limit: Math.min(Number(limit) || 20, 100), offset: Number(offset) || 0, status });
 }
 
+/** 候选池 + 标签（一次性，供匹配算法用；含 tags:[{name,category}]）。 */
+export async function listTalentsWithTags({ limit = 200 } = {}) {
+  const b = await backend();
+  return b.listTalentsWithTags({ limit: Math.min(Number(limit) || 200, 500) });
+}
+
 /** 查候选人详情（含标签）。 */
 export async function getTalent(id) {
   const b = await backend();
