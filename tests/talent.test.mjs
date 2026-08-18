@@ -98,6 +98,37 @@ test('供给适配层：开关开启时产出 TalentSupplySnapshot 并写匹配�
   delete process.env.BRAINX_TALENT_SUPPLY;
 });
 
+test('匹配算法 v1：skill 标签命中职位需求 → 高分且带命中词', async () => {
+  const { scoreTalentForJob, buildJobMatchContext, SUPPLY_WEIGHTS } = await import('../src/talent-supply.js');
+  const ctx = buildJobMatchContext({ company: '39AI', role: '海外投放经理', notes: '负责 google ads facebook 投放优化' });
+  const cand = { name: '甲', summary: '', tags: [
+    { name: 'google', category: 'skill' }, { name: 'facebook', category: 'skill' },
+    { name: '投放', category: 'intention' },
+  ] };
+  const { score, detail } = scoreTalentForJob(cand, ctx);
+  assert.ok(score > 0, '有技能命中应有正分');
+  assert.equal(detail.algo, 'supply-match-v1');
+  assert.ok(detail.dimensions.skill.matched.length > 0, 'skill 维应记录命中词');
+});
+
+test('匹配算法 v1：完全不相关候选 → 0 分', async () => {
+  const { scoreTalentForJob, buildJobMatchContext } = await import('../src/talent-supply.js');
+  const ctx = buildJobMatchContext({ company: 'X', role: '海外投放经理', notes: 'google ads' });
+  const cand = { name: '乙', summary: '厨师 川菜 火锅', tags: [{ name: '烹饪', category: 'skill' }] };
+  const { score } = scoreTalentForJob(cand, ctx);
+  assert.equal(score, 0, '无任何重合应为 0 分');
+});
+
+test('匹配算法 v1：技能维权重高于意向维（同等命中率时 skill 主导）', async () => {
+  const { scoreTalentForJob, buildJobMatchContext } = await import('../src/talent-supply.js');
+  const ctx = buildJobMatchContext({ role: '增长负责人', notes: '增长' });
+  const skillCand = { name: '技能强', summary: '', tags: [{ name: '增长', category: 'skill' }] };
+  const intentCand = { name: '意向强', summary: '', tags: [{ name: '增长', category: 'intention' }] };
+  const s1 = scoreTalentForJob(skillCand, ctx).score;
+  const s2 = scoreTalentForJob(intentCand, ctx).score;
+  assert.ok(s1 > s2, 'skill 命中(0.5)应高于 intention 命中(0.3)');
+});
+
 test('CSV 同步骨架：从岗位盘点表 UPSERT 候选画像并打意向标签', async () => {
   const { syncTalentsFromCsv } = await import('../src/talent.js');
   const out = await syncTalentsFromCsv(fileURLToPath(new URL('../公司岗位情况-Shanon - Sheet1.csv', import.meta.url)));
