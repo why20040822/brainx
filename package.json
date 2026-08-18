@@ -10,9 +10,11 @@
     "mysql2": "^3.23.3"
   },
   "scripts": {
-    "dev": "cd frontend/btex-frontend && WRANGLER_LOG_PATH=.wrangler/wrangler.log ./node_modules/.bin/vinext dev --host 0.0.0.0 --port 3000",
+    "dev": "node src/server.js",
+    "dev:frontend-only": "cd frontend/btex-frontend && WRANGLER_LOG_PATH=.wrangler/wrangler.log ./node_modules/.bin/vinext dev --host 0.0.0.0 --port 3000",
     "build": "cd frontend/btex-frontend && WRANGLER_LOG_PATH=.wrangler/wrangler.log ./node_modules/.bin/vinext build",
-    "start": "cd frontend/btex-frontend && WRANGLER_LOG_PATH=.wrangler/wrangler.log ./node_modules/.bin/vinext start --host 0.0.0.0 --port 3000",
+    "start": "node src/server.js",
+    "start:frontend-only": "cd frontend/btex-frontend && WRANGLER_LOG_PATH=.wrangler/wrangler.log ./node_modules/.bin/vinext start --host 0.0.0.0 --port 3000",
     "frontend:install": "npm --prefix frontend/btex-frontend install",
     "sync": "node bin/brainx-sync.mjs",
     "adapter": "node bin/brainx-adapter.mjs",
