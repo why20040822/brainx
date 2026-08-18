@@ -5,7 +5,7 @@
 html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-sans)}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid rgba(47,107,96,.22);outline-offset:2px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid rgba(47,211,167,.28);outline-offset:2px}
 .app{min-height:100vh;display:grid;grid-template-columns:220px minmax(0,1fr)}
 .sidebar{position:sticky;top:0;height:100vh;background:#f8f8fa;color:var(--ink);padding:22px 14px;display:flex;flex-direction:column;border-right:1px solid var(--line);box-shadow:8px 0 28px rgba(29,29,31,.03)}
 .brand{display:flex;align-items:center;gap:10px;padding:0 8px 22px;border-bottom:1px solid var(--line)}.brand-mark{width:34px;height:34px;border-radius:3px;background:#1d1d1f;color:#fff;display:grid;place-items:center;font-family:serif;font-weight:700;border:1px solid #1d1d1f;box-shadow:inset 0 0 0 2px #ffffff24}.brand b{font-size:14px;letter-spacing:.06em}.brand small{display:block;color:#86868b;margin-top:3px;font:9px var(--font-mono);letter-spacing:.08em}
@@ -403,7 +403,7 @@ html,body,.btex-app{background:var(--bg)}
   --bg:#f5faf8;--ink:#1c2b26;--muted:#71807a;--line:rgba(28,43,38,.08);
   --blue:#2FD3A7;--green:#2FD3A7;--cyan:#2FD3A7;--amber:#b98a2e;--orange:#c56a24;--red:#b4534a;
   --panel:#ffffff;--soft:rgba(47,211,167,.10);color-scheme:light;
-  --mint:#dcefe8;--mint-soft:#eef7f3;--mint-ink:#1f5b50;--sage:#edf2f1;
+  --mint:#DDF8EF;--mint-soft:#EFFBF7;--mint-ink:#176B58;--sage:#edf2f1;
   --font-display:"PingFang SC","PingFang TC","Noto Sans CJK SC","Microsoft YaHei","Helvetica Neue",Arial,sans-serif;
   --shadow-card:0 24px 60px rgba(23,43,36,.06);
 }
@@ -641,3 +641,14 @@ html,body,.btex-app{background:var(--bg)}
 .accepted-card-fact{display:flex;justify-content:space-between;gap:12px;padding-top:12px;border-top:1px dashed rgba(28,43,38,.14);font-size:11px}.accepted-card-fact span{color:var(--muted)}.accepted-card-fact b{color:var(--ink);font-weight:550;text-align:right}
 .accepted-card-action{display:flex;align-items:center;justify-content:space-between;margin-top:4px;padding:10px 0 0;border:0;border-top:1px solid rgba(28,43,38,.08);background:transparent;color:var(--mint-ink);font-size:12px;font-weight:650;cursor:pointer}.accepted-card-action svg{width:15px}
 @media(max-width:720px){.accepted-summary{align-items:flex-start;flex-direction:column;gap:8px}.accepted-list{grid-template-columns:1fr}}
+
+/* Final green palette pass: keep all interactive and selected surfaces on the same accent. */
+.btex-app .rail-blocks>button:hover{background:var(--mint-soft);color:var(--mint-ink)}
+.btex-app .rail-blocks>button.active{background:var(--mint);border-color:rgba(47,211,167,.28);color:var(--mint-ink)}
+.btex-app .pick-card:hover{border-color:rgba(47,211,167,.42)}
+.btex-app .pick-card.in-tray{border-color:rgba(47,211,167,.58);background:var(--mint-soft)}
+.btex-app .pick-card.in-tray .pick-add{background:var(--green);border-color:var(--green)}
+.btex-app .decision-zone.accepted .decision-queue{box-shadow:0 8px 24px rgba(47,211,167,.08)}
+.btex-app .decision-zone .decision-row:hover{background:rgba(47,211,167,.05)}
+.btex-app .accepted-summary{border-color:rgba(47,211,167,.22);background:rgba(47,211,167,.07)}
+.btex-app .accepted-card-action,.btex-app .pick-card-action{color:var(--mint-ink)}
