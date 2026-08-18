@@ -381,13 +381,25 @@ const MEM = {
   },
   async upsertTalent(rec) {
     const key = talentDedupeKey(rec);
-    for (const t of this._talents.values()) {
-      if (talentDedupeKey(t) === key) {
-        t.status = rec.status;
-        if (rec.summary != null) t.summary = rec.summary;
-        if (rec.lastActiveTime != null) t.last_active_time = rec.lastActiveTime;
-        return { id: t.id, created: false, key };
+    // 去重优先级与 MySQL 版一致：强标识(phone/email)优先；姓名仅在新记录无强标识时兜底，
+    // 且只匹配库里同样无强标识的同名记录，避免同名误合并。
+    let hit = null;
+    if (rec.phone || rec.email) {
+      for (const t of this._talents.values()) {
+        if ((rec.phone && t.phone === rec.phone) || (rec.email && t.email === rec.email)) { hit = t; break; }
       }
+    } else {
+      for (const t of this._talents.values()) {
+        if (t.name === rec.name && t.phone == null && t.email == null) { hit = t; break; }
+      }
+    }
+    if (hit) {
+      if (hit.phone == null && rec.phone != null) hit.phone = rec.phone; // 回填强标识，不覆盖已有
+      if (hit.email == null && rec.email != null) hit.email = rec.email;
+      hit.status = rec.status;
+      if (rec.summary != null) hit.summary = rec.summary;
+      if (rec.lastActiveTime != null) hit.last_active_time = rec.lastActiveTime;
+      return { id: hit.id, created: false, key };
     }
     const id = ++this._seq.talent;
     this._talents.set(id, { id, name: rec.name, phone: rec.phone, email: rec.email,
