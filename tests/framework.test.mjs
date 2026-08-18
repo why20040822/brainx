@@ -307,13 +307,13 @@ test('档案：种子只填空档案，不冲顾问自维护内容', () => {
   assert.deepEqual(mia.profile_keywords, ['AI应用', '企业服务', '产品']);
 });
 
-test('档案：方向关键词让 direction 维度真正出分（空档案恒 0）', () => {
+test('档案：方向关键词让 direction 出分；空档案空历史时 direction 缺失(null)不惩罚', () => {
   const ctx0 = { consultant_id: 'mia', profile_keywords: [], historical_texts: [],
     watched_count: 0, accepted_count: 0, outcomes_avg: null, now: '2026-08-10T00:00:00.000Z' };
   const ctx1 = { ...ctx0, profile_keywords: ['AI应用'] };
   const job = { project_id: 'P-FW-PROF', company: '某厂', role: 'AI应用工程师', pipeline: '', active_state: 'OPEN', captured_at: '2026-08-10' };
   const d0 = scoreJob(job, 'TEAM_SHARED', ctx0).breakdown.find((d) => d.dim === 'direction').score;
   const d1 = scoreJob(job, 'TEAM_SHARED', ctx1).breakdown.find((d) => d.dim === 'direction').score;
-  assert.equal(d0, 0);
+  assert.equal(d0, null, '纯冷启动（无画像无历史）方向维应缺失，而非 0 分硬扣权重');
   assert.ok(d1 > 0);
 });
