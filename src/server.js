@@ -226,7 +226,8 @@ export function createServer(db = openDb(), deps = {}) {
       if (!run) return json(res, 200, { blocked: false, run_id: null, items: [], empty: true });
       json(res, 200, { blocked: false, run_id: run.run.run_id, snapshot_id: run.run.snapshot_id,
                        policy_version: run.run.policy_version, generated_at: run.run.created_at,
-                       items: run.items.slice(0, limit) });
+                       items: run.items.filter((item) => !db.prepare(`SELECT 1 FROM recommendation_feedback
+                         WHERE consultant_id=? AND project_id=? LIMIT 1`).get(cid, item.job.project_id)).slice(0, limit) });
     },
 
     'GET /api/v1/recommendations/pick-tray': (req, res, cid, q) => {
