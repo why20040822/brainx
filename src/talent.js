@@ -448,6 +448,15 @@ const MEM = {
       .map((x) => ({ ...tagById.get(x.tag_id), source: x.source }));
     return { ...t, tags };
   },
+  async listTalentsWithTags({ limit = 200 } = {}) {
+    const tagById = new Map([...this._tags.values()].map((g) => [g.id, g]));
+    const arr = [...this._talents.values()].sort((a, b) => b.id - a.id).slice(0, limit);
+    return arr.map((t) => ({
+      ...t,
+      tags: this._talentTags.filter((x) => x.talent_id === t.id)
+        .map((x) => { const g = tagById.get(x.tag_id); return { name: g?.name, category: g?.category }; }),
+    }));
+  },
   async upsertPosition({ title, description, requirements }) {
     for (const p of this._positions.values()) if (p.title === title) return { id: p.id, created: false };
     const id = ++this._seq.position;
