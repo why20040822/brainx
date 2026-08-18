@@ -152,7 +152,8 @@ export function createServer(db = openDb(), deps = {}) {
       const b = await body(req);
       const question = typeof b?.question === 'string' ? b.question.trim() : '';
       if (!question || question.length > 4000) return err(res, 422, 'INVALID_QUESTION', '问题不能为空且不能超过 4000 字');
-      if (!isLlmConfigured()) return err(res, 503, 'LLM_NOT_CONFIGURED', 'DeepSeek 尚未配置，请联系管理员设置服务器环境变量');
+      const requestApiKey = typeof b?.api_key === 'string' ? b.api_key.trim().slice(0, 300) : '';
+      if (!isLlmConfigured() && !requestApiKey) return err(res, 503, 'LLM_NOT_CONFIGURED', 'DeepSeek 尚未配置，请联系管理员设置服务器环境变量');
       const requestedHistory = Array.isArray(b?.history) ? b.history : [];
       const history = requestedHistory.slice(-12).filter((m) =>
         m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
@@ -180,7 +181,8 @@ export function createServer(db = openDb(), deps = {}) {
       res.write(`event: meta\ndata: ${JSON.stringify({ ok: true, read_only: true })}\n\n`);
       try {
         await chatStream([{ role: 'system', content: system }, ...history, { role: 'user', content: question }], {
-          signal: req.signal,
+        signal: req.signal,
+          apiKey: requestApiKey || undefined,
           onText: (text) => { if (!res.destroyed) res.write(`data: ${JSON.stringify({ text })}\n\n`); },
         });
         if (!res.destroyed) res.write('event: done\ndata: {}\n\n');

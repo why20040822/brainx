@@ -145,7 +145,7 @@ export type BackendOutcomeResponse = { ok: boolean; already?: boolean; outcome_i
 export type BackendProfileUpdate = { ok: boolean; consultant_id: string; profile_keywords?: string[]; profile_note?: string };
 export type AssistantMessage = { role: "user" | "assistant"; content: string };
 export type AssistantContext = { page: string; opportunity_id?: string | null };
-export type AssistantChatOptions = { question: string; history: AssistantMessage[]; context: AssistantContext; signal?: AbortSignal };
+export type AssistantChatOptions = { question: string; history: AssistantMessage[]; context: AssistantContext; api_key?: string; signal?: AbortSignal };
 
 export class BrainxApiError extends Error {
   status: number;
@@ -612,7 +612,7 @@ export async function streamAssistant(
   const res = await fetch("/api/v1/assistant/chat", {
     method: "POST", credentials: "same-origin", signal: options.signal,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question: options.question, history: options.history, context: options.context }),
+    body: JSON.stringify({ question: options.question, history: options.history, context: options.context, api_key: options.api_key }),
   });
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
