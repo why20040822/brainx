@@ -239,18 +239,35 @@ function makeMysqlBackend(db) {
       return withMysql(async (conn) => {
         // MySQL datetime 不认 ISO8601 的 'T'/'Z'，统一转成 'YYYY-MM-DD HH:MM:SS'。
         const lat = toMysqlDatetime(rec.lastActiveTime);
-        // 归一去重：先按 dedupeKey 命中
         const key = talentDedupeKey(rec);
-        const [hit] = await conn.execute(
-          `SELECT id FROM talent WHERE (phone IS NOT NULL AND phone=?) OR (email IS NOT NULL AND email=?) OR name=? LIMIT 1`,
-          [rec.phone, rec.email, rec.name],
-        );
-        if (hit[0]) {
-          await conn.execute(
-            `UPDATE talent SET status=?, summary=COALESCE(?,summary), last_active_time=COALESCE(?,last_active_time) WHERE id=?`,
-            [rec.status, rec.summary, lat, hit[0].id],
+        // —— 去重优先级（保真实导入数据质量，避免同名误合并）——
+        // 1) 强标识优先：phone / email 命中 → 判定同一人（手机、邮箱是唯一身份标识）。
+        // 2) 姓名仅作兜底：只有当【新记录既无 phone 又无 email】时，才允许按姓名匹配；
+        //    且只匹配库里【同样没有强标识】的同名记录，绝不把新人合并进一个已有手机/邮箱的同名人。
+        let hitId = null;
+        if (rec.phone || rec.email) {
+          const [strong] = await conn.execute(
+            `SELECT id FROM talent WHERE (phone IS NOT NULL AND phone=?) OR (email IS NOT NULL AND email=?) LIMIT 1`,
+            [rec.phone, rec.email],
           );
-          return { id: hit[0].id, created: false, key };
+          hitId = strong[0]?.id ?? null;
+        } else {
+          const [weak] = await conn.execute(
+            `SELECT id FROM talent WHERE name=? AND phone IS NULL AND email IS NULL LIMIT 1`,
+            [rec.name],
+          );
+          hitId = weak[0]?.id ?? null;
+        }
+        if (hitId) {
+          // 命中即更新：回填 phone/email（原为空才补，不覆盖已有强标识），并刷新状态/摘要/活跃时间。
+          await conn.execute(
+            `UPDATE talent SET
+               phone=COALESCE(phone,?), email=COALESCE(email,?),
+               status=?, summary=COALESCE(?,summary), last_active_time=COALESCE(?,last_active_time)
+             WHERE id=?`,
+            [rec.phone, rec.email, rec.status, rec.summary, lat, hitId],
+          );
+          return { id: hitId, created: false, key };
         }
         const [res] = await conn.execute(
           `INSERT INTO talent (name, phone, email, status, summary, created_by, last_active_time)
