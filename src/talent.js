@@ -237,6 +237,8 @@ function makeMysqlBackend(db) {
     degraded: null,
     async upsertTalent(rec) {
       return withMysql(async (conn) => {
+        // MySQL datetime 不认 ISO8601 的 'T'/'Z'，统一转成 'YYYY-MM-DD HH:MM:SS'。
+        const lat = toMysqlDatetime(rec.lastActiveTime);
         // 归一去重：先按 dedupeKey 命中
         const key = talentDedupeKey(rec);
         const [hit] = await conn.execute(
@@ -246,14 +248,14 @@ function makeMysqlBackend(db) {
         if (hit[0]) {
           await conn.execute(
             `UPDATE talent SET status=?, summary=COALESCE(?,summary), last_active_time=COALESCE(?,last_active_time) WHERE id=?`,
-            [rec.status, rec.summary, rec.lastActiveTime, hit[0].id],
+            [rec.status, rec.summary, lat, hit[0].id],
           );
           return { id: hit[0].id, created: false, key };
         }
         const [res] = await conn.execute(
           `INSERT INTO talent (name, phone, email, status, summary, created_by, last_active_time)
            VALUES (?,?,?,?,?,?,?)`,
-          [rec.name, rec.phone, rec.email, rec.status, rec.summary, rec.createdBy, rec.lastActiveTime],
+          [rec.name, rec.phone, rec.email, rec.status, rec.summary, rec.createdBy, lat],
         );
         return { id: res.insertId, created: true, key };
       });
