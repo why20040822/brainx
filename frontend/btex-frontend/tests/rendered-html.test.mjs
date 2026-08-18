@@ -88,7 +88,7 @@ test("keeps my commitments in the left workspace and removes the bottom duplicat
     source("app/globals.css"),
   ]);
 
-  assert.match(workbench, /const \[navOpen,setNavOpen\]=useState\(true\)/);
+  assert.match(workbench, /const \[navOpen,setNavOpen\]=useState\(false\)/);
   assert.match(workbench, /\{kind:"commitments"\}/);
   assert.match(workbench, /function CommitmentsPanel/);
   assert.match(workbench, /className="mobile-commitment-trigger"/);

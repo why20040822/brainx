@@ -29,6 +29,8 @@ import { radarRows, clientRows } from './radar.js';
 import { syncTalentsFromCsv, listTalents as listTalentsRepo, getTalent, talentBackendStatus, ingestResume, syncTalentsFromResumes, listResumes, talentHealth } from './talent.js';
 import { talentSupplyForJob, talentSupplyEnabled } from './talent-supply.js';
 import { effectiveJob, effectiveFactPayload, updateFactOverrides } from './facts.js';
+import { chatStream, isLlmConfigured } from './llm.js';
+import { pickTray, nextBatch, feedback as recommendationFeedback } from './recommendation-batch.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
@@ -221,6 +223,52 @@ export function createServer(db = openDb(), deps = {}) {
       res.end();
     },
 
+    'POST /api/v1/assistant/chat': async (req, res, cid) => {
+      const b = await body(req);
+      const question = typeof b?.question === 'string' ? b.question.trim() : '';
+      if (!question || question.length > 4000) return err(res, 422, 'INVALID_QUESTION', '问题不能为空且不能超过 4000 字');
+      const requestApiKey = typeof b?.api_key === 'string' ? b.api_key.trim().slice(0, 300) : '';
+      if (!isLlmConfigured() && !requestApiKey) return err(res, 503, 'LLM_NOT_CONFIGURED', 'DeepSeek 尚未配置，请联系管理员设置服务器环境变量');
+      const requestedHistory = Array.isArray(b?.history) ? b.history : [];
+      const history = requestedHistory.slice(-12).filter((m) =>
+        m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }));
+      const run = latestRun(db, cid);
+      const sync = latestSync(db, cid);
+      const commitments = commitmentSummary(db, cid);
+      const selectedId = typeof b?.context?.opportunity_id === 'string' ? b.context.opportunity_id : null;
+      const items = (run?.items || []).slice(0, 10).map((item) => ({
+        project_id: item.job?.project_id, company: item.job?.company, role: item.job?.role,
+        score: item.score, action: item.action, confidence_band: item.confidence_band,
+        evidence_coverage: item.evidence_coverage, reasons: item.reasons, risks: item.risks,
+      }));
+      const selected = selectedId ? items.find((item) => item.project_id === selectedId) || null : null;
+      const context = JSON.stringify({
+        consultant_id: cid,
+        page: typeof b?.context?.page === 'string' ? b.context.page.slice(0, 80) : 'today',
+        selected_opportunity: selected,
+        recommendations: items,
+        sync: sync ? { state: sync.complete ? 'READY' : 'INCOMPLETE', updated_at: sync.completed_at, rows_read: sync.rows_read } : { state: 'EMPTY' },
+        commitments: commitments.items?.slice(0, 20) || [],
+      });
+      const system = `你是 BrainX 工作台的只读业务助手。你只能依据提供的当前顾问可见上下文回答，不得编造事实，不得声称已经执行任何操作。你不能调用工具、SQL、Shell，也不能修改职位、承接、结果或画像。没有数据时明确说“当前后端没有这项数据”。回答使用简洁中文。当前上下文：${context}`;
+      res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive' });
+      res.write(`event: meta\ndata: ${JSON.stringify({ ok: true, read_only: true })}\n\n`);
+      try {
+        await chatStream([{ role: 'system', content: system }, ...history, { role: 'user', content: question }], {
+        signal: req.signal,
+          apiKey: requestApiKey || undefined,
+          onText: (text) => { if (!res.destroyed) res.write(`data: ${JSON.stringify({ text })}\n\n`); },
+        });
+        if (!res.destroyed) res.write('event: done\ndata: {}\n\n');
+      } catch (e) {
+        if (!res.destroyed) {
+          const status = e?.status === 429 ? 429 : e?.status >= 500 ? 504 : 502;
+          res.write(`event: error\ndata: ${JSON.stringify({ code: status === 429 ? 'LLM_RATE_LIMIT' : 'LLM_UNAVAILABLE', message: status === 429 ? 'DeepSeek 请求过于频繁，请稍后重试' : 'DeepSeek 暂时不可用，请稍后重试' })}\n\n`);
+        }
+      } finally { if (!res.destroyed) res.end(); }
+    },
+
     'GET /api/v1/workbench': (req, res, cid) => {
       const sync = latestSync(db, cid);
       const run = latestRun(db, cid);
@@ -252,11 +300,25 @@ export function createServer(db = openDb(), deps = {}) {
       if (!run) return json(res, 200, { blocked: false, run_id: null, items: [], empty: true });
       json(res, 200, { blocked: false, run_id: run.run.run_id, snapshot_id: run.run.snapshot_id,
                        policy_version: run.run.policy_version, generated_at: run.run.created_at,
-                       items: run.items.slice(0, limit) });
+                       items: run.items.filter((item) => !db.prepare(`SELECT 1 FROM recommendation_feedback
+                         WHERE consultant_id=? AND project_id=? LIMIT 1`).get(cid, item.job.project_id)).slice(0, limit) });
+    },
+
+    'GET /api/v1/recommendations/pick-tray': (req, res, cid, q) => {
+      const out = pickTray(db, cid, { limit: q.get('limit'), cursor: q.get('cursor') });
+      json(res, 200, out);
+    },
+    'POST /api/v1/recommendations/feedback': async (req, res, cid) => {
+      const out = recommendationFeedback(db, cid, await body(req));
+      json(res, out.ok ? 200 : out.status || 422, out);
+    },
+    'POST /api/v1/recommendations/next-batch': async (req, res, cid) => {
+      const out = nextBatch(db, cid, await body(req));
+      json(res, out.ok ? 200 : out.status || 409, out);
     },
 
     'POST /api/v1/recommendations/run': (req, res, cid) => {
-      const out = recommend(db, cid, { top: 10 });
+      const out = recommend(db, cid, { top: 20 });
       json(res, out.blocked ? 409 : 200, out);
     },
 
@@ -318,7 +380,7 @@ export function createServer(db = openDb(), deps = {}) {
         const out = updateFactOverrides(db, cid, id, b);
         if (!out.ok) return err(res, out.status || 422, 'FACT_UPDATE_REJECTED', out.error);
         // 覆盖写入后生成新冻结推荐；旧 run / replay 行永不更新。
-        const rec = out.already ? null : recommend(db, cid, { top: 10 });
+        const rec = out.already ? null : recommend(db, cid, { top: 20 });
         const latest = latestRun(db, cid);
         const item = latest?.items.find((r) => r.job?.project_id === id) || null;
         json(res, rec?.blocked ? 409 : 200, {
@@ -531,7 +593,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   // 桥接常驻：BRAINX_BRIDGE_INTERVAL_MS（默认 180s）；BRAINX_BRIDGE_OFF=1 关闭
   if (process.env.BRAINX_BRIDGE_OFF !== '1') {
     startBridge(db, server.bus, {
-      recommendFn: (cid) => recommend(db, cid, { top: 10 }),
+      recommendFn: (cid) => recommend(db, cid, { top: 20 }),
       consultantIdsFn: () => loadConsultants(db).map((c) => c.consultant_id),
       onRecommended: makeAutoPush(db), // 重大变化自动推卡；BRAINX_PUSH_AUTO=1 才真发
     });
