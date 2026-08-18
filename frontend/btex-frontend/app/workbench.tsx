@@ -651,8 +651,8 @@ function JobsView({jobs,status,setStatus,sort,setSort,view,setView,selected,setS
  const statusOptions:FilterSelectOption[]=[{value:"全部状态",label:"全部状态"},{value:"待同步",label:"待同步"},...statusOrder.map(value=>({value,label:value}))];
  const sortOptions:FilterSelectOption[]=[{value:"score",label:"综合分数 ↓"},{value:"hc",label:"HC ↓"}];
  const positionTypes:PositionType[]=["产品","运营","技术","算法","设计","商业化"];
- const clientOptions:FilterSelectOption[]=[{value:"全部客户",label:"全部客户"},...Array.from(new Set(jobs.map((job:Job)=>job.client))).sort().map((value:string)=>({value,label:value}))];
- const cityOptions:FilterSelectOption[]=[{value:"全部城市",label:"全部城市"},...Array.from(new Set(jobs.map((job:Job)=>job.city))).sort().map((value:string)=>({value,label:value}))];
+ const clientOptions:FilterSelectOption[]=[{value:"全部客户",label:"全部客户"},...Array.from(new Set<string>(jobs.map((job:Job)=>job.client))).sort().map((value:string)=>({value,label:value}))];
+ const cityOptions:FilterSelectOption[]=[{value:"全部城市",label:"全部城市"},...Array.from(new Set<string>(jobs.map((job:Job)=>job.city))).sort().map((value:string)=>({value,label:value}))];
  const typeOptions:FilterSelectOption[]=[{value:"全部职位类型",label:"全部职位类型"},...positionTypes.map(value=>({value,label:`${value} · ${jobs.filter((job:Job)=>job.positionType===value).length}`}))];
  const sourceOptions:FilterSelectOption[]=[{value:"全部来源",label:"全部来源"},{value:"驾驶舱导入",label:`驾驶舱导入 · ${jobs.filter((job:Job)=>job.source==="驾驶舱导入").length}`},{value:"市场信号",label:`市场信号 · ${jobs.filter((job:Job)=>job.source==="市场信号").length}`}];
  const visibleJobs=jobs.filter((job:Job)=>(clientFilter==="全部客户"||job.client===clientFilter)&&(cityFilter==="全部城市"||job.city===cityFilter)&&(typeFilter==="全部职位类型"||job.positionType===typeFilter)&&(sourceFilter==="全部来源"||job.source===sourceFilter));
