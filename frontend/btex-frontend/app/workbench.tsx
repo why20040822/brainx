@@ -5,7 +5,7 @@ import {
   Activity, AlertTriangle, ArrowLeft, BarChart3, Bell, BriefcaseBusiness,
   Check, ChevronDown, ChevronRight, CircleHelp, Clock3, Database, Filter, FolderOpen, FolderPlus, GitCompareArrows,
   Infinity, ListFilter, MoreHorizontal, Plus, RotateCcw, Search, Settings2,
-  BellRing, CheckCircle2, CircleUserRound, ClipboardCheck, PanelLeft, Send, ShieldCheck, SlidersHorizontal, Sparkles, Users, X, Zap,
+  BellRing, CheckCircle2, CircleUserRound, ClipboardCheck, Send, ShieldCheck, SlidersHorizontal, Sparkles, Users, X, Zap,
 } from "lucide-react";
 import { actionLabel, seedAuth, seedNotifications, seedSync, stateLabel, type AuthStatus, type DecisionEvent, type EngagementCommand, type EngagementState, type Notification, type Outcome, type SyncStatus } from "./decision-demo";
 import { BACKEND_WEIGHTS, FALLBACK_DISMISS_REASONS, brainxFetch, connectSSE, fetchJobDetail, getSnapshot, makeIdempotencyKey, mapReplayData, mapRadarRow, mapClientRow, getRadar, getClients, updateOpportunityFacts, streamAssistant, BrainxApiError, type AssistantMessage, type BackendConsultants, type BackendEngagementResponse, type BackendOutcomeResponse, type BackendProfileUpdate, type BackendRecommendationRun, type BackendReplay, type BackendSessionStatus, type BrainxReplay, type BrainxSnapshot, type ManualFactField, type RadarJob, type RadarClient } from "./brainx-api";
@@ -178,7 +178,7 @@ function nextState(command:EngagementCommand):EngagementState{return ({WATCH:"WA
 export default function DecisionWorkbench(){
  const [hydrated,setHydrated]=useState(false);
  const [page,setPage]=useState<Page>("today");
- const [navOpen,setNavOpen]=useState(true);
+ const [navOpen,setNavOpen]=useState(false);
  const [sidebarWidth,setSidebarWidth]=useState(280);
  const [sidebarResize,setSidebarResize]=useState<SidebarResize|null>(null);
  const [query,setQuery]=useState("");
@@ -301,7 +301,6 @@ useEffect(()=>{if(!sidebarResize)return;const delta=(event:PointerEvent)=>event.
  };
  return <div className={`app btex-app ${navOpen?"nav-open":""} ${assistantOpen?"assistant-open":""} ${panelMotion==="open"?"decision-panel-open":""} ${panelPresent?"decision-panel-present decision-panel-compact":""} panel-motion-${panelMotion} ${sidebarResize?"is-resizing":""} ${mobileNavOpen?"mobile-nav-open":""} ${mobileDrawerDrag.current?"mobile-nav-swiping":""}`} style={{"--sidebar-width":`${navOpen?sidebarWidth:68}px`,"--mobile-drawer-progress":mobileDrawerProgress??1} as React.CSSProperties} onPointerDown={beginMobileSwipe} onPointerMove={moveMobileSwipe} onPointerUp={event=>endMobileSwipe(event)} onPointerCancel={event=>endMobileSwipe(event,true)}>
   <aside className="rail-nav" aria-label="主要导航">
-   <button className="rail-toggle" onClick={()=>setNavOpen(value=>!value)} aria-label={navOpen?"收起导航":"展开导航"} aria-expanded={navOpen}><PanelLeft/></button>
    <button className="rail-brand" onClick={()=>go("today")} aria-label="B-tex 首页"><span className="rail-brand-mark"><Infinity aria-hidden="true"/></span></button>
    <nav className="rail-blocks">{nav.map(([id,label,Icon])=><button key={id} className={page===id?"active":""} onClick={()=>go(id)} aria-label={label} aria-current={page===id?"page":undefined}><span className="rail-ico"><Icon/></span><span className="rail-label">{label}</span></button>)}</nav>
    <div className="rail-spacer"/>
