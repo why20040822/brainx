@@ -380,15 +380,17 @@ function AcceptedJobsView({jobs,total,query,open}:{jobs:DecisionJob[];total:numb
 }
 
 function DecisionToday({activeJobId,completed,jobs,engagement,sync,open,onAction,onFeedback,showVerification=true,tray,onToggleTray,onRemoveTray,onConfirmTray,folders,folderMode,onFolderMode,onAssignFolder,onCreateFolder}:{activeJobId:string|null;completed:string[];jobs:DecisionJob[];engagement:Record<string,EngagementState>;sync:SyncStatus;open:(job:DecisionJob,tab?:"judgement"|"engagement"|"trail"|"replay")=>void;onAction:(job:DecisionJob,action:DecisionAction)=>void;onFeedback:(job:DecisionJob)=>void;showVerification?:boolean;tray:string[];onToggleTray:(id:string)=>void;onRemoveTray:(id:string)=>void;onConfirmTray:()=>void;folders:PickFolder[];folderMode:boolean;onFolderMode:()=>void;onAssignFolder:(jobId:string,folderId:string)=>void;onCreateFolder:(name:string)=>void}){
+ const [pendingFilter,setPendingFilter]=useState("全部职位");
  const acceptedJobs=jobs.filter(job=>engagement[job.id]==="ACCEPTED");
  const pendingJobs=[...jobs.filter(job=>engagement[job.id]!=="ACCEPTED"),...verificationJobs];
  const pendingShown=showVerification?pendingJobs:pendingJobs.filter(job=>!verificationJobs.includes(job));
+ const filteredPending=pendingFilter==="已观察"?pendingShown.filter(job=>engagement[job.id]==="WATCHED"):pendingShown;
  const allJobs=[...acceptedJobs,...pendingShown];
  const trayJobs=tray.map(id=>allJobs.find(job=>job.id===id)).filter((job):job is DecisionJob=>!!job);
  const isContext=activeJobId!==null&&pendingShown.some(job=>job.id===activeJobId);
   return <div className="decision-home">
   <PickTray trayJobs={trayJobs} allJobs={allJobs} folderMode={folderMode} onFolderMode={onFolderMode} folders={folders} onRemoveTray={onRemoveTray} onConfirmTray={onConfirmTray} onAssignFolder={onAssignFolder} onCreateFolder={onCreateFolder} open={open}/>
-  {sync.state==="INCOMPLETE"||sync.state==="ERROR"?<section className="decision-blocked"><AlertTriangle/><div><b>{sync.state==="INCOMPLETE"?"本次同步不完整":"同步失败"}</b><p>为避免误导，当前不展示新的项目判断。</p></div><button className="btn" onClick={()=>open(jobs[0],"judgement")}>查看上次快照</button></section>:<DecisionZone tone="pending" title="未接单" subtitle="" jobs={pendingShown} isContext={isContext} completed={completed} engagement={engagement} open={open} onAction={onAction} onFeedback={onFeedback} tray={tray} onToggleTray={onToggleTray} folderMode={folderMode} folders={folders} onAssignFolder={onAssignFolder}/>}
+  {sync.state==="INCOMPLETE"||sync.state==="ERROR"?<section className="decision-blocked"><AlertTriangle/><div><b>{sync.state==="INCOMPLETE"?"本次同步不完整":"同步失败"}</b><p>为避免误导，当前不展示新的项目判断。</p></div><button className="btn" onClick={()=>open(jobs[0],"judgement")}>查看上次快照</button></section>:<><div className="decision-filterbar"><span>职位筛选</span><FilterSelect value={pendingFilter} onChange={setPendingFilter} ariaLabel="未接单职位筛选" options={[{value:"全部职位",label:"全部职位"},{value:"已观察",label:"已观察"}]}/></div><DecisionZone tone="pending" title="未接单" subtitle="" jobs={filteredPending} isContext={isContext} completed={completed} engagement={engagement} open={open} onAction={onAction} onFeedback={onFeedback} tray={tray} onToggleTray={onToggleTray} folderMode={folderMode} folders={folders} onAssignFolder={onAssignFolder}/></>}
   </div>
 }
 
@@ -432,7 +434,7 @@ function DecisionCard({job,completed,engagement,open,onAction,onFeedback,inTray,
   <button className="pick-card-feedback" onClick={e=>{e.stopPropagation();onFeedback(job)}} aria-label="不感兴趣" title="不感兴趣">×</button>
   <div className="pick-card-rank">No.{String(job.rank).padStart(2,"0")}</div>
   <div className="pick-card-title"><b>{job.company}</b><span>{job.role}</span></div>
-  <div className="pick-card-tags"><em>{decisionGroupMeta[job.group].title}</em><em>{job.facts["职位关系"]}</em><em>{job.sourceMode==="COCKPIT_CONTEXT"?"驾驶舱上下文":"职位市场"}</em><em>{stateLabel[engagement]}</em></div>
+  <div className="pick-card-tags"><em>{decisionGroupMeta[job.group].title}</em><em>{job.facts["职位关系"]}</em><em>{job.sourceMode==="COCKPIT_CONTEXT"?"驾驶舱上下文":"职位市场"}</em><em>{engagement==="WATCHED"?"已观察":stateLabel[engagement]}</em></div>
   <p className="pick-card-reco">{job.recommendation}</p>
   <div className="pick-card-scores"><DecisionMetric label="推进" value={job.globalScore}/><DecisionMetric label="探索" value={job.explorationScore}/><DecisionMetric label="个人" value={job.personalScore}/><DecisionMetric label="最终" value={job.finalScore} emphasis="final"/></div>
   {folderMode&&<div className="pick-card-folder" onClick={e=>e.stopPropagation()}><FolderPlus/><select className="field" value="" onChange={e=>{if(e.target.value)onAssignFolder(job.id,e.target.value)}} aria-label={`将 ${job.company} 放入文件夹`}><option value="">放入文件夹…</option>{folders.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select></div>}

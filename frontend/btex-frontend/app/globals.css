@@ -565,10 +565,13 @@ html,body,.btex-app{background:var(--bg)}
  .btex-app .content{padding:28px 18px 70px}
  .pick-grid{grid-template-columns:1fr}
  .pick-tray-head .btn{margin-left:0}
+ .decision-filterbar{justify-content:space-between;margin:-8px 0 12px}
 }
 
 /* ── 呼吸感收尾：区域标题留白 + 更浅的分隔线 ── */
 .decision-zone{border-top:1px solid rgba(28,43,38,.08)}
+.decision-filterbar{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin:-12px 0 14px;color:var(--muted);font-size:12px}
+.decision-filterbar .filter-select{min-width:116px}
 .decision-zone .decision-group-head{min-height:70px;padding:18px 16px 24px}
 .decision-zone .decision-group-head h2{font-size:22px}
 .folder-strip-head{margin-bottom:12px}
