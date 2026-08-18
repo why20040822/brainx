@@ -115,9 +115,12 @@ export function scoreJob(job, relation, ctx) {
       }))
     : null;
 
-  // 承接容量 15%：关注+接单占 10 上限比例反向
+  // 承接容量 15%：关注+接单占「上限」的反向比例。
+  // 上限可配：ctx.capacity_limit（顾问级）> 默认 CAPACITY_LIMIT。修正前写死 /10，
+  // 不同顾问产能不同会失真；高产能顾问被低估容量、低产能顾问被高估。
   const used = (ctx.watched_count || 0) + (ctx.accepted_count || 0);
-  dims.capacity = Math.max(0, Math.round((1 - used / 10) * 100));
+  const limit = Number(ctx.capacity_limit) > 0 ? Number(ctx.capacity_limit) : CAPACITY_LIMIT;
+  dims.capacity = Math.max(0, Math.round((1 - used / limit) * 100));
 
   // 历史结果 15%：有结果评分则 ×20，无则缺失
   dims.outcomes = ctx.outcomes_avg != null ? Math.round(ctx.outcomes_avg * 20) : null;
