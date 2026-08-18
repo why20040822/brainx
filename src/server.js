@@ -26,12 +26,9 @@ import { validateJwt, saveTtcToken, ttcAuthStatus } from './ttcsdk/auth.js';
 import { quota as ttcQuota } from './ttcsdk/user.js';
 import { TtcApiError } from './ttcsdk/http.js';
 import { radarRows, clientRows } from './radar.js';
-<<<<<<< HEAD
 import { syncTalentsFromCsv, listTalents as listTalentsRepo, getTalent, talentBackendStatus, ingestResume, syncTalentsFromResumes, listResumes, talentHealth } from './talent.js';
 import { talentSupplyForJob, talentSupplyEnabled } from './talent-supply.js';
-=======
 import { effectiveJob, effectiveFactPayload, updateFactOverrides } from './facts.js';
->>>>>>> github/main
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC = join(ROOT, 'public');
