@@ -291,10 +291,10 @@ function makeMysqlBackend(db) {
     },
     async upsertPosition({ title, description, requirements }) {
       return withMysql(async (conn) => {
-        const [hit] = await conn.execute(`SELECT id FROM position WHERE title=? LIMIT 1`, [title]);
+        const [hit] = await conn.execute(`SELECT id FROM \`position\` WHERE title=? LIMIT 1`, [title]);
         if (hit[0]) return { id: hit[0].id, created: false };
         const [res] = await conn.execute(
-          `INSERT INTO position (title, description, requirements) VALUES (?,?,?)`, [title, description, requirements]);
+          `INSERT INTO \`position\` (title, description, requirements) VALUES (?,?,?)`, [title, description, requirements]);
         return { id: res.insertId, created: true };
       });
     },
