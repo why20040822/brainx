@@ -16,7 +16,7 @@ before(() => {
 
 test('花名册：种子幂等 + open_id 匹配 + 在线 upsert 不丢画像', () => {
   const n = seedRoster(db);
-  assert.equal(n, 6); // felix/mia/york + 2026-08-13 扩编 wendy/linda/shanon（York团队&人才库共创群）
+  assert.equal(n, 7); // 现有六位顾问 + Otto（待绑定飞书身份）
   seedRoster(db);     // 再播一次不报错
   const all = listConsultants(db);
   assert.equal(all.length, 7);
